@@ -400,7 +400,7 @@ def step_KT2000_FD2_RFA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # Compute all fields here:
     phi_S = therm.surface_BL(t_n, te, h, p.core_temperature)
     cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, newtonian_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
+    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
     dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
     #
     # --------------------------------------------------------------------------
@@ -493,7 +493,7 @@ def step_KT2000_FD2_OHA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # Compute all fields here:
     phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
     cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, newtonian_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
+    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
     dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
     #
     # --------------------------------------------------------------------------
@@ -580,7 +580,7 @@ def step_KT2000_FD2_OSA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # Compute all fields here:
     phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
     cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, newtonian_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
+    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
     dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
     #
     # --------------------------------------------------------------------------
@@ -697,7 +697,7 @@ def step_KT2000_FD2_OHI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # Compute all fields here:
     phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
     cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, newtonian_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
+    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
     dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
     #
     # --------------------------------------------------------------------------
@@ -783,7 +783,7 @@ def step_KT2000_FD2_OSI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # Compute all fields here:
     phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
     cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, newtonian_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
+    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
     dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
     #
     # --------------------------------------------------------------------------

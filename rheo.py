@@ -154,7 +154,7 @@ def rheo_factor_bl_S_all_outputs(h, B, phi_S, cryst_core):
     R = Rs.copy()
     fluidity_core = Rs.copy()
     abs_grad_S = Rs.copy()
-    f_T = Rs.copy()
+    E_T = Rs.copy()
     #
     valid = h > p.tiny_flow
     if np.any(valid):
@@ -174,16 +174,16 @@ def rheo_factor_bl_S_all_outputs(h, B, phi_S, cryst_core):
         term1 = np.maximum(1 - bingham_core, 0)**2
         term2 = np.maximum(phi_S_v - bingham_core, 0)**2
         f = term1 - term2
-        fS_T_v = np.maximum(0, f)
-        f_T_v = np.maximum(0, term1 - term2*phi_S_v + 0.5*bingham_core*f)
+        ES_T_v = np.maximum(0, f)
+        E_T_v = np.maximum(0, term1 - term2*phi_S_v + 0.5*bingham_core*f)
         #
-        R[valid] = R_core * f_T_v
-        Rs[valid] = 1.5 * R_core * fS_T_v
+        R[valid] = R_core * E_T_v
+        Rs[valid] = 1.5 * R_core * ES_T_v
         fluidity_core[valid] = fluidity_core_v
         abs_grad_S[valid] = grad_S_v
-        f_T[valid] = f_T_v
+        E_T[valid] = E_T_v
     #
-    return R, Rs, fluidity_core, abs_grad_S, f_T
+    return R, Rs, fluidity_core, abs_grad_S, E_T
 
 def dBdt_constants(T_core):
     # Constants:
@@ -224,83 +224,4 @@ def dBdt(t, ti, h, T_core, U_s, fluidity_core, q_n):
     out[q_n > 0] = 0
     #
     return out
-
-
-
-
-
-
-'''
-notes on error for Forward Euler for dBdt:
-
-max error occurs when dBdt ~ c * sqrt(1/t)
-
-Error Anaylsis for:
-dB/dt = sqrt(1/t)
-B(dt/2) = 0
-vs.
-B_{n} = B_{n-1} + dt / sqrt(t_{n-1})
-t_{0} = dt/2
-B_{0} = 0
-
-B(t_{n}) = sqrt(4*t_{n}) - sqrt(2*dt) = sqrt(4*(dt/2 + n*dt)) - sqrt(2*dt)
-         = sqrt(dt) * sqrt(2) * (sqrt(2*n + 1) - 1)
-B_{n} = sqrt(dt) * sum_{k=0}^{n-1} 1/sqrt(k + 1/2)
-
-Global Error:
-E_{n} = sqrt(dt) * ( sum_{k=0}^{n-1} 1/sqrt(k + 1/2) - sqrt(2)*(sqrt(2*n+1) -1) )
-
-asympotics: n --> inf:
-B_{n} ~ sqrt(dt) * (2*sqrt(n) + (sqrt(2)-1)*zeta(1/2)) + O(1/n**1.5)
-E_{n} ~ sqrt(dt) * (sqrt(2) + (sqrt(2)-1)*zeta(1/2)) + O(1/sqrt(n))
-
-lim n --> inf:
-E_{n} --> sqrt(dt) * (sqrt(2) + (sqrt(2)-1)*zeta(1/2)) ~ 0.8093 * sqrt(dt)
-
-'''
-
-
-
-'''
-
-def rheo_factor_bl(h, B, phi_B, phi_S, cryst_core, I):
-    #
-    # --------------------------------------------------------------------------
-    # Rheological Mobility factor
-    # Contains all rheological information
-    # related to gravity current diffusivity: K = R * h**3
-    #
-    grad_S_active = slope_SAN(B + h, I) # (n_active,)
-    #
-    phi_B_active = phi_B[I] # (n_active,)
-    phi_S_active = phi_S[I] # (n_active,)
-    h_active = h[I] # (n_active,)
-    cryst_core_active = cryst_core[I] # (n_active,)
-    #
-    spec_weight = p.lava_density * p.g
-    R_core = 0.33333 * spec_weight / viscosity(p.core_temperature, cryst_core_active)
-
-    bingham_core = yield_stress(cryst_core_active) / (spec_weight * h_active * grad_S_active + p.pos_eps) # Bingham Number w/ div-by-zero protection  # (n_active,)
-    #
-    term1 = np.maximum(1 - phi_B_active - bingham_core, 0)**2
-    term2 = np.maximum(phi_S_active - bingham_core, 0)**2
-    fS_T_active = np.maximum(0, term1 - term2)
-    f_T_active = np.maximum(0, term1 * (1 - phi_B_active + 0.5*bingham_core) - term2 * (phi_S_active + 0.5*bingham_core))
-    #f_T_active = np.maximum(0, ne.evaluate('term1 * (1 - phi_B_active + 0.5*bingham_core) - term2 * (phi_S_active + 0.5*bingham_core)'))
-    #
-    # Need to correct based on thickness threshold for valid cells in therm.thermal_BLs
-    invalid_active = (h_active < p.tiny_flow)
-    fS_T_active[invalid_active] = 0.
-    f_T_active[invalid_active] = 0.
-    #
-    Rs = np.zeros(h.shape, dtype = h.dtype) # (rows, cols)
-    R = Rs.copy()
-    R[I] = R_core * f_T_active
-    Rs[I] = 1.5 * R_core * fS_T_active
-    #
-    return R, Rs
-
-
-'''
-
 #
