@@ -11,6 +11,7 @@ sim.set_topo( # set DEM info
     Lat_LowerLeft       = 35.28,   # bounding box: lower-left latitude
     Lon_UpperRight      = -111.45, # bounding box: upper-right longitude
     Lat_UpperRight      = 35.57,   # bounding box: upper-right latitude
+    fill_level          = 0.0,     # fill topography up to fill_level (m.a.s.l.)
     dx_desired          = 40,          # meters
     smooth_n_times      = 5
     )

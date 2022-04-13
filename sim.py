@@ -65,6 +65,7 @@ def set_topo(
     Lat_LowerLeft = -.1,
     Lon_UpperRight = .1,
     Lat_UpperRight = .1,
+    fill_level = None,
     dx_desired = None,
     smooth_n_times = 0
     ):
@@ -73,7 +74,8 @@ def set_topo(
         path_to_dem_file,
         Lon_SRC, Lat_SRC,
         Lon_LowerLeft, Lat_LowerLeft,
-        Lon_UpperRight, Lat_UpperRight
+        Lon_UpperRight, Lat_UpperRight,
+        fill_level = fill_level
         )
     #
     if dx_desired != None:
