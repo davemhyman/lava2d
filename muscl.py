@@ -106,9 +106,10 @@ def subset_bounds(t, buffer_cells = 5):
     #
     I = g.h_n > 0
     #
+    '''
     # Correct for vent areas
     I[180:225,65:95] = True
-    '''
+    #
     # need faster vent area corrector
     # static corrector is pretty fast if vents are close together
     # cannot compute corrector region every time -- too slow!
@@ -962,5 +963,3 @@ def step_KT2000_FD2_OSI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
 # lol please halp
 
 # TEQUILA: The EQUations for Integrated Lava Advection
-
- 
