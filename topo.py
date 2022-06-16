@@ -13,6 +13,8 @@ from globals import grids as g
 
 
 import muscl as m
+import rheo
+import thermal as therm
 import post
 
 ################################################################################
@@ -133,6 +135,44 @@ def make_inclined_plane(dip, azimuth, x_UpperLeft, y_UpperLeft, nx, ny, dxy, pat
     new_dataset.close()
 
 
+def make_cone(dip, nx, ny, dxy, path_to_dir):
+    # Make cone dem
+    # dip: how steep (degrees down from horizontal)
+    # lat,lon will be equal to x,y
+    #
+    x_UpperLeft = -(nx//2)*dxy
+    y_UpperLeft = (ny//2)*dxy
+    x = x_UpperLeft + np.arange(nx)*dxy
+    y = y_UpperLeft - np.arange(ny)*dxy
+    X,Y = np.meshgrid(x,y)
+    R = (X**2 + Y**2)**0.5
+    #
+    grad_B = np.tan(np.radians(dip))
+    Z = -grad_B * R
+    #
+    # Affine Transformation
+    transform = Affine.translation(x_UpperLeft, y_UpperLeft) * Affine.scale(dxy, -dxy) # affine transformation matrix
+    #
+    bbox = 'left={:.0f}__bottom={:.0f}__right={:.0f}__top={:.0f}'.format(x.min(), y.min(), x.max(), y.max())
+    file = 'cone_'+'dip={}_'.format(dip)+bbox+'.tif'
+    fullpath = path_to_dir + file
+    #
+    new_dataset = rasterio.open(
+        fullpath,
+        'w',
+        driver='GTiff',
+        height=Z.shape[0],
+        width=Z.shape[1],
+        count=1,
+        dtype=Z.dtype,
+        crs='+proj=latlong',
+        transform=transform,
+        )
+    #
+    new_dataset.write(Z, 1)
+    new_dataset.close()
+
+
 def smooth_topo(n_times):
     for i in range(n_times):
         print('| --- Smoothing Topography --- |')
@@ -186,28 +226,33 @@ def show_topo(B, dz = 10):
 
 
 
-def freeze():
+def freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n):
     #
     # Implicitly global:
     # phi_S, cryst_core, newtonian_efficiency, t_n
     #
-    global h, B_n, dBdt, ti
+    # global h, B_n, dBdt, ti
     #
     # Freezout:
     # if cell to cell velocity is zero and core is locked or crust is full thickness
     # Locked core and fully crust only casues cell-to-cell zero veolicty when these conditions are true in both cells.
     # Only true at cell ij when also true for E, W, N, S
     #
-    fully_crust = phi_S >= 1.0 # if all neighborhood cells true
+    T_stiff = rheo.T_stiffened(p.core_temperature) # temp at which visc = 2*visc_core
+    eta_inf = therm.erfinv((T_stiff-p.atm_temperature)/(p.core_temperature-p.atm_temperature))
+    phi_true_crust = phi_S * (0.88/eta_inf) # 0.88 from Hon et al., 1998
+    #
+    fully_crust = phi_true_crust >= 1.0 # if all neighborhood cells true
     core_locked = cryst_core >= p.phi_max # if all neighborhood cells true
-    stalled = m.local_and_EWNS(newtonian_efficiency == 0) # EWNS neighbors all stopped
+    stalled = m.local_and_EWNS(jeffreys_efficiency == 0) # EWNS neighbors all stopped
     freezeout = np.logical_and(stalled, np.logical_or(core_locked, fully_crust))
     #
     h_to_freeze = p.fraction_to_freeze * h[freezeout]
     B_n[freezeout] += h_to_freeze
     h[freezeout] -= h_to_freeze
     dBdt[freezeout] = 0
-    ti[freezeout] = t_n
+    #
+    #ti[freezeout] = t_n
     # R, Rs, abs_U_s all zero already in freezout region
     # no return needed
 

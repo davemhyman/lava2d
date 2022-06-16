@@ -20,7 +20,7 @@ def update_inundation_times(t_inundation, h_n, t, dt):
     # All un-inundated cells should be assigned an inundation time of
     #     t_inundation = t (t-t_inundation = 0 passed to thermal problems)
     #
-    not_inundated_last = np.isclose(t_inundation, t-dt) # un-inundated cells last time step
+    not_inundated_last = np.isclose(t_inundation, t-dt, rtol = 0.0, atol = .001*dt) # un-inundated cells last time step
     inundated_now = h_n > p.tiny_flow # inundated cells
     update_t_in =  np.logical_and(not_inundated_last, inundated_now) # inundated during this time step
     #
@@ -32,11 +32,11 @@ def update_inundation_times(t_inundation, h_n, t, dt):
 
 
 
-def update_te_from_advection():
+def update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij):
     # Implicitly global:
     # Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij
     #
-    global te
+    # global te
     #
     # t_erupted
     te_ij = te[I] # (n_active,) # Q[I] == Q[2:-2,2:-2][I_ij]
@@ -67,17 +67,17 @@ def update_te_from_advection():
     #neg_advection_te = te_ij*np.sum(Usurf/dxy[:,None], axis = 0) - np.sum(all_fluxes/dxy[:,None], axis = 0)
     neg_advection_te = np.sum((te_ij[None,:]*Usurf - all_fluxes_te) / dxy[:,None], axis = 0) # numerically the same as commented version
     te[I] += dt * neg_advection_te
-    te[q_n > 0] = t_n + dt - p.crust_age_at_eruption # ensure source conditon  # (rows, cols)
+    te[q_n > 0] = t_n + dt # ensure source conditon  # (rows, cols)
     #
     return abs_Usurf
 
 
 
-def update_te_from_inundation():
+def update_te_from_inundation(te, Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I):
     # Implicitly global:
     # Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
     #
-    global te
+    # global te
     #
     # --------------------------------------------------------------------------
     # Surface Speed
@@ -88,7 +88,7 @@ def update_te_from_inundation():
     # Update t_erupted
     speed_ratio_ij = local_mean((R_n + p.pos_eps) / (Rsurf_n + p.pos_eps))[I]
     te_ij_update = t_n - speed_ratio_ij * ti[I] # assume surface travel time is ~ 2/3 of bulk current
-    te_ij_update[q_ij > 0] = t_n + dt - p.crust_age_at_eruption # ensure source conditon  # (rows, cols)
+    te_ij_update[q_ij > 0] = t_n + dt # ensure source conditon  # (rows, cols)
     te[I] = te_ij_update
     #
     return abs_Usurf
@@ -98,15 +98,55 @@ def update_te_from_inundation():
 ################################################################################
 # Adaptive Grid Subset Tools
 ################################################################################
-def subset_bounds(buffer_cells = 5):
+def subset_bounds(t, buffer_cells = 5):
+    #
     ny_global, nx_global = g.h_n.shape
-    I = (g.h_n > p.tiny_flow)
+    #
+    x_UpperLeft, y_UpperLeft = g.x[0,0], g.y[0,0]
+    #
+    I = g.h_n > 0
+    #
+    # Correct for vent areas
+    I[180:225,65:95] = True
+    '''
+    # need faster vent area corrector
+    # static corrector is pretty fast if vents are close together
+    # cannot compute corrector region every time -- too slow!
+    # could make a global grid g.t_on with vent area cells having the value of time when they turn on
+    # similar grid for when they shut off (g.t_off)
+    # (g.t_on <= t_n) and (t_n <= g.t_off) demarcates vent areas where discharge is ongoing
+    # g.discharge_ongoing = np.logical_and(g.t_on <= t_n, g.t_off >= t_n)
+    # I = np.logical_or(g.h_n > 0, g.discharge_ongoing)
+    #
+    #
+    #
+    #
+    n_vents = len(p.vent_param_splines)
+    dxy_min = min(p.dx,p.dy)
+    for n in range(n_vents):
+        x0,y0,x1,y1,W,Q_n = p.vent_param_splines[n](t) # scalars
+        if Q_n != 0:
+            L = np.sqrt((x1-x0)**2 + (y1-y0)**2)
+            bw = int(0.5 * max(L,W) / dxy_min) + 1
+            xavg = 0.5*(x0+x1)
+            yavg = 0.5*(y0+y1)
+            #
+            id_xavg = int((xavg - x_UpperLeft) / p.dx)
+            id_yavg = int((y_UpperLeft - yavg) / p.dy)
+            #
+            r_top = max(id_yavg - bw, 0)
+            r_bottom = min(id_yavg + bw+1, ny_global)
+            c_left = max(id_xavg - bw, 0)
+            c_right = min(id_xavg + bw+1, nx_global)
+            #
+            I[r_top:r_bottom, c_left:c_right] = True
+        #
+    #
+    '''
     #
     if ~np.any(I):
-        # define active set from source term
-        I = vents.source_term(g.x,g.y,0,np.isfinite(g.x)) > p.pos_eps
-    if ~np.any(I):
-        # h = 0, q = 0 ==> nothing will happen --> active at 1 cell
+        # h = 0, q = 0 ==> nothing will happen
+        # --> make active at 1 cell in the grid center
         sh = g.x.shape
         I[sh[0]//2, sh[1]//2] = True
     #
@@ -232,8 +272,9 @@ def local_and_EWNS(grid):
     out[1:-1,1:-1] = np.logical_and.reduce([C, W, E, N, S])
     return out
 
-def active_indicator(h, buffer):
-    I0 = h > p.tiny_flow
+def active_indicator(h, q, buffer):
+    #I0 = np.logical_or(h > 0, q != 0)
+    I0 = h + q != 0
     if I0.any():
         I_num = I0.astype(h.dtype)
         I_num = local_mean(I_num)
@@ -405,7 +446,7 @@ def step_KT2000_FD2_RFA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     #
     # --------------------------------------------------------------------------
     # Freezout:
-    topo.freeze()
+    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
     #
     # --------------------------------------------------------------------------
     # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
@@ -471,7 +512,7 @@ def step_KT2000_FD2_RFA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     #
     # --------------------------------------------------------------------------
     # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_advection() # Implicit globals: Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij
+    abs_Usurf = update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij) # Implicit globals: Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij
     # --------------------------------------------------------------------------
     # Update Base
     dB = np.minimum(dt * dBdt, h) # at most can freeze h
@@ -491,14 +532,15 @@ def step_KT2000_FD2_OHA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # te_update         = 'advection' (A)
     # --------------------------------------------------------------------------
     # Compute all fields here:
-    phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
+    phi_S = therm.surface_BL(t_n, te, h, p.core_temperature)
+    #phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
     cryst_core = rheo.cryst_avrami(t_n, te, I)
     R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
     dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
     #
     # --------------------------------------------------------------------------
     # Freezout:
-    topo.freeze()
+    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
     #
     # --------------------------------------------------------------------------
     # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
@@ -535,10 +577,12 @@ def step_KT2000_FD2_OHA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     x_speed_max = amax[0:2].max()
     y_speed_max = amax[2:4].max()
     #
+    Kmax = np.max(K_n[I])
+    #
     # --------------------------------------------------------------------------
     # Timestep
     # set dt: either hyperbolic, initial, or max_val
-    dt, dt_type = dt_muscl(x_speed_max, y_speed_max, K_n.max(), h.max(), q_ij.max())
+    dt, dt_type = dt_muscl(x_speed_max, y_speed_max, Kmax, h.max(), q_ij.max())
     #
     # --------------------------------------------------------------------------
     # Fluxes from Kurganov and Tadmor (2000)
@@ -558,7 +602,7 @@ def step_KT2000_FD2_OHA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     substeps = 1
     # --------------------------------------------------------------------------
     # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_advection() # Implicit globals: Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij
+    abs_Usurf = update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij) # Implicit globals: Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij
     #
     # --------------------------------------------------------------------------
     # Update Base
@@ -585,7 +629,7 @@ def step_KT2000_FD2_OSA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     #
     # --------------------------------------------------------------------------
     # Freezout:
-    topo.freeze()
+    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
     #
     # --------------------------------------------------------------------------
     # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
@@ -674,7 +718,7 @@ def step_KT2000_FD2_OSA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     #
     # --------------------------------------------------------------------------
     # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_advection()
+    abs_Usurf = update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij)
     #
     # --------------------------------------------------------------------------
     # Update Base
@@ -702,11 +746,11 @@ def step_KT2000_FD2_OHI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     #
     # --------------------------------------------------------------------------
     # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_inundation() # Implicit Globals: Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
+    abs_Usurf = update_te_from_inundation(te, Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I) # Implicit Globals: Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
     #
     # --------------------------------------------------------------------------
     # Freezout:
-    topo.freeze()
+    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
     #
     # --------------------------------------------------------------------------
     # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
@@ -788,11 +832,11 @@ def step_KT2000_FD2_OSI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     #
     # --------------------------------------------------------------------------
     # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_inundation() # Implicit Globals: Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
+    abs_Usurf = update_te_from_inundation(te, Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I) # Implicit Globals: Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
     #
     # --------------------------------------------------------------------------
     # Freezout:
-    topo.freeze()
+    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
     #
     # --------------------------------------------------------------------------
     # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
@@ -883,7 +927,7 @@ def step_KT2000_FD2_OSI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # Update t_erupted
     speed_ratio_ij = local_mean((R_n + p.pos_eps) / (Rsurf_n + p.pos_eps))[I]
     te_ij_update = t_n -  speed_ratio_ij * ti[I] # assume surface travel time is ~ 2/3 of bulk current
-    te_ij_update[q_ij > 0] = t_n + dt - p.crust_age_at_eruption # ensure source conditon  # (rows, cols)
+    te_ij_update[q_ij > 0] = t_n + dt # ensure source conditon  # (rows, cols)
     te[I] = te_ij_update
     #
     # --------------------------------------------------------------------------
@@ -902,17 +946,21 @@ def step_KT2000_FD2_OSI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
 #
 ################################################################################
 
-# OLFM: Operational Lava Forecasting Model
 
-# Lava-2D
-# MODLAVA
+# Lava2D -- too boring?
 
-# MODAL Model: Modular Operational Depth-Averaged Lava Model
+# HiPrFlow-2D: High-Prandtl Flow in 2D -- too weird?
 
-# HiPrFlow: High-Prandtl number Flow (HiPrFlow-Op, - Operational)
+# ThermaFlow -- too pharma sounding?
 
-# 'Aila'au: AILaAu: An Integrated Lava Automaton
+# LavaFOR: Lava Forecasting for Operations and Research (Python version would be Lava4Py) -- too hard to remember?
 
+# BSALT: Basic System for Advecting Lava and Temperature  -- also too hard -- too app-like?
 
+# GOLF: Generalized Operational Lava Flow model -- I do not like golf
 
-#
+# lol please halp
+
+# TEQUILA: The EQUations for Integrated Lava Advection
+
+ 

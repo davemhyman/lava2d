@@ -14,8 +14,7 @@ def surf_heat_flux(T):
     d_rad = d2_rad * T / 3.
     rad = d_rad * T / 4 - sb_eff * p.atm_temperature**4
     #
-    h_conv = p.C_H * p.atm_density * p.atm_specific_heat * p.atm_wind
-    conv = h_conv * (T - p.atm_temperature)
+    conv = p.h_conv * (T - p.atm_temperature)
     #
     # Rain Cooling:
     rain_flux = p.rainfall * p.water_density
@@ -32,7 +31,7 @@ def surf_heat_flux(T):
     d2_rain = -rain_flux*stdpdf/sigma_T * (p.water_specific_heat + p.water_latent_heat_vap * Z/sigma_T)
     #
     q = rad + conv + rain
-    dq = d_rad + h_conv + d_rain
+    dq = d_rad + p.h_conv + d_rain
     d2q = d2_rad + d2_rain
     #
     return q, dq, d2q
@@ -57,9 +56,8 @@ def solve_T_surf_robin_problem(t_s, T_c, tol = 1e-6):
     Lk = np.sqrt(t_s / (p.lava_density * p.lava_specific_heat * p.lava_conductivity))
     # initial guess
     sb_eff = p.lava_emissivity * p.stefan_boltzmann
-    h_conv = p.C_H * p.atm_density * p.atm_specific_heat * p.atm_wind
-    dq_core = 4 * sb_eff * T_c**3 + h_conv
-    dq_atm = 4 * sb_eff * p.atm_temperature**3 + h_conv + p.rainfall*p.water_density*p.water_specific_heat
+    dq_core = 4 * sb_eff * T_c**3 + p.h_conv
+    dq_atm = 4 * sb_eff * p.atm_temperature**3 + p.h_conv + p.rainfall*p.water_density*p.water_specific_heat
     Ts = p.atm_temperature - (T_c - p.atm_temperature) / (Theta(0,dq_core*Lk) / (Theta(0,dq_atm*Lk)-1) - 1)
     #
     q, dq, d2q = surf_heat_flux(Ts) # surface heat flux and derivatives

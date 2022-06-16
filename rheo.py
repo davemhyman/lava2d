@@ -21,9 +21,6 @@ def melt_viscosity(T):
     # Lev et al 2012: visc(T) = 10**(-5.94 + 5500. / (T - 610.))
     a = d_log_visc_dT(p.core_temperature)
     return p.viscosity_vent * np.exp(a*(p.T_vent - T))
-    #T0 = p.T_vent
-    #mu0 = p.viscosity_vent
-    #return ne.evaluate('mu0 * exp(a*(T0 - T))')
 
 def d_log_visc_dT(T):
     # a =  -d(log(melt_visc))/dT
@@ -31,7 +28,9 @@ def d_log_visc_dT(T):
     # a_Lev = np.log(10) * 5500. * (T - 610.)**-2
     # a_lev_1050C = 0.0249
     # a_Dragoni = .04
-    return np.log(10) * 5500. * (T - 610.)**-2
+    # return np.log(10) * 5500. * (T - 610.)**-2
+    return .04
+
 
 def T_stiffened(T_core):
     # Temp at which visc = 2*visc_core
@@ -76,19 +75,19 @@ def slope_SAN(S, I):
     S_W = S[1:-1,0:-2][I_ij] # (n_active,)
     S_N = S[0:-2,1:-1][I_ij] # (n_active,)
     S_S = S[2:,1:-1][I_ij] # (n_active,)
-    S_NE = S[0:-2,2:][I_ij] # (n_active,)
-    S_SW = S[2:,0:-2][I_ij] # (n_active,)
-    S_NW = S[0:-2,0:-2][I_ij] # (n_active,)
-    S_SE = S[2:,2:][I_ij] # (n_active,)
+    #S_NE = S[0:-2,2:][I_ij] # (n_active,)
+    #S_SW = S[2:,0:-2][I_ij] # (n_active,)
+    #S_NW = S[0:-2,0:-2][I_ij] # (n_active,)
+    #S_SE = S[2:,2:][I_ij] # (n_active,)
     #
     dS_E = abs(S_E - S_ij) # (n_active,)
     dS_W = abs(S_ij - S_W) # (n_active,)
     dS_N = abs(S_N - S_ij) # (n_active,)
     dS_S = abs(S_ij - S_S) # (n_active,)
-    dS_NE = abs(S_NE - S_ij) # (n_active,)
-    dS_SW = abs(S_ij - S_SW) # (n_active,)
-    dS_NW = abs(S_NW - S_ij) # (n_active,)
-    dS_SE = abs(S_ij - S_SE) # (n_active,)
+    #dS_NE = abs(S_NE - S_ij) # (n_active,)
+    #dS_SW = abs(S_ij - S_SW) # (n_active,)
+    #dS_NW = abs(S_NW - S_ij) # (n_active,)
+    #dS_SE = abs(S_ij - S_SE) # (n_active,)
     #
     #diff_NE_SW = ne.evaluate('where(dS_NE > dS_SW, dS_NE, dS_SW)')
     #diff_NW_SE = ne.evaluate('where(dS_NW > dS_SE, dS_NW, dS_SE)')
@@ -96,52 +95,15 @@ def slope_SAN(S, I):
     #slope_E_W = ne.evaluate('where(dS_E > dS_W, dS_E, dS_W)') / p.dx
     #slope_N_S = ne.evaluate('where(dS_N > dS_S, dS_N, dS_S)') / p.dy
     #slope_max_card = ne.evaluate('where(slope_E_W > slope_N_S, slope_E_W, slope_N_S)')
-    slope_max_diag = np.maximum.reduce([dS_NE, dS_SW, dS_NW, dS_SE]) / np.sqrt(p.dx**2 + p.dy**2) # (n_active,)
+    #
+    #slope_max_diag = np.maximum.reduce([dS_NE, dS_SW, dS_NW, dS_SE]) / np.sqrt(p.dx**2 + p.dy**2) # (n_active,)
     slope_max_EW = np.maximum(dS_E, dS_W) / p.dx # (n_active,)
     slope_max_NS = np.maximum(dS_N, dS_S) / p.dy # (n_active,)
+    slope_max = np.sqrt(slope_max_EW**2 + slope_max_NS**2)
     #
     #return ne.evaluate('where(slope_max_card > slope_max_diag, slope_max_card, slope_max_diag)')
-    return np.maximum.reduce([slope_max_EW, slope_max_NS, slope_max_diag])
-
-def rheo_factor_bl_S(h, B, phi_S, cryst_core):
-    #
-    # --------------------------------------------------------------------------
-    # Rheological Mobility factor
-    # Contains all rheological information
-    # related to gravity current diffusivity: K = R * h**3
-    #
-    Rs = np.zeros(h.shape, dtype = h.dtype) # (rows, cols)
-    R = Rs.copy()
-    fluidity_core = Rs.copy()
-    abs_grad_S = Rs.copy()
-    #
-    valid = h > p.tiny_flow
-    if np.any(valid):
-        #
-        grad_S_v = slope_SAN(B + h, valid) # (n_active,)
-        phi_S_v = phi_S[valid] # (n_active,)
-        h_v = h[valid] # (n_active,)
-        cryst_core_v = cryst_core[valid] # (n_active,)
-        #
-        spec_weight = p.lava_density * p.g
-        fluidity_core_v = fluidity(p.core_temperature, cryst_core_v)
-        R_core = 0.3333 * spec_weight * fluidity_core_v
-        #
-        yield_strength = yield_stress(cryst_core_v) + phi_S_v*p.yield_strength_crust
-        bingham_core = yield_strength / (spec_weight * h_v * grad_S_v + p.pos_eps) # Bingham Number w/ div-by-zero protection  # (n_active,)
-        #
-        term1 = np.maximum(1 - bingham_core, 0)**2
-        term2 = np.maximum(phi_S_v - bingham_core, 0)**2
-        f = term1 - term2
-        fS_T_v = np.maximum(0, f)
-        f_T_v = np.maximum(0, term1 - term2*phi_S_v + 0.5*bingham_core*f)
-        #
-        R[valid] = R_core * f_T_v
-        Rs[valid] = 1.5 * R_core * fS_T_v
-        fluidity_core[valid] = fluidity_core_v
-        abs_grad_S[valid] = grad_S_v
-    #
-    return R, Rs, fluidity_core, abs_grad_S
+    #return np.maximum.reduce([slope_max_EW, slope_max_NS, slope_max_diag])
+    return slope_max
 
 def rheo_factor_bl_S_all_outputs(h, B, phi_S, cryst_core):
     #
@@ -168,7 +130,10 @@ def rheo_factor_bl_S_all_outputs(h, B, phi_S, cryst_core):
         fluidity_core_v = fluidity(p.core_temperature, cryst_core_v)
         R_core = 0.3333 * spec_weight * fluidity_core_v
         #
-        yield_strength = yield_stress(cryst_core_v) + phi_S_v*p.yield_strength_crust
+        T_stiff = T_stiffened(p.core_temperature) # temp at which visc = 2*visc_core
+        eta_inf = therm.erfinv((T_stiff-p.atm_temperature)/(p.core_temperature-p.atm_temperature))
+        phi_true_crust = phi_S_v * (0.88/eta_inf) # 0.88 from Hon et al., 1998
+        yield_strength = yield_stress(cryst_core_v) + p.yield_strength_crust * phi_true_crust
         bingham_core = yield_strength / (spec_weight * h_v * grad_S_v + p.pos_eps) # Bingham Number w/ div-by-zero protection  # (n_active,)
         #
         term1 = np.maximum(1 - bingham_core, 0)**2
@@ -192,6 +157,7 @@ def dBdt_constants(T_core):
     a_star = (T_core - p.ground_temperature) * d_log_visc_dT(T_core)
     #
     lam = therm.erfinv(1 - 1.38629 / a_star)
+    #
     temp1 = lam * 3.2 - 2.71
     temp2 = np.log(2.5 * lam)
     omega = 2./temp1 * (temp2 + np.sqrt(temp2**2 - temp1 / (lam * 1.8303)))
@@ -222,6 +188,9 @@ def dBdt(t, ti, h, T_core, U_s, fluidity_core, q_n):
         #
     #
     out[q_n > 0] = 0
+    #
+    lambda_substrate = 1.0 * lam
+    out = lambda_substrate / lam * out
     #
     return out
 #

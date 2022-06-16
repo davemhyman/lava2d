@@ -115,13 +115,9 @@ def set_topo(
 #
 #-------------------------------------------------------------------------------
 def set_source(
-    path_to_vent_files = '',
-    discharge_ramp_up = 600, # s
-    crust_age_at_eruption = 0 # seconds
+    path_to_vent_files = ''
     ):
     #
-    p.discharge_ramp_time = discharge_ramp_up
-    p.crust_age_at_eruption = crust_age_at_eruption
     p.path_to_vent_files = path_to_vent_files
     vents.read_source_data()
 #
@@ -144,7 +140,6 @@ def set_lava_props(
     lava_diffusivity = 5.5e-7, # m2 s-1
     lava_specific_heat = 1000, # J kg-1 K-1
     lava_emissivity = 0.95,
-    C_H = .0036, # Lava surface roughness (aerodynamic heat transfer)
     ):
     #
     p.lava_density = liquid_density * (1 - porosity)
@@ -157,11 +152,10 @@ def set_lava_props(
         p.lava_diffusivity = p.lava_conductivity / (p.lava_density * p.lava_specific_heat)
     #
     p.lava_emissivity = lava_emissivity
-    p.C_H = C_H
 #
 #-------------------------------------------------------------------------------
 def set_rheo(
-    phi_max = 1, # max crystal packing fraction
+    phi_max = 0.67, # max crystal packing fraction
     max_cryst_rate = 0, # s-1
     yield_strength_crust = 0, # Pa
     glass_temperature = None, # K
@@ -185,61 +179,43 @@ def set_rheo(
 #
 #-------------------------------------------------------------------------------
 def set_ambient(
-    water_density = 1000, # kg m-3
-    water_specific_heat = 4190, # J kg-1 K-1
-    water_latent_heat_vap = 2.26e6, # J kg-1
-    water_boiling_temperature = 373, # K
-    atm_specific_heat = 1000, # J kg-1 K-1
-    atm_density = 1.0, # kg m-3
     atm_temperature = 300, # K
-    atm_wind = 0, # m s-1
+    h_conv = 10, # m s-1
     rainfall = 0, # m s-1
     ground_temperature = 300 # K
     ):
     #
-    p.water_density = water_density
-    p.water_specific_heat = water_specific_heat
-    p.water_latent_heat_vap = water_latent_heat_vap
-    p.water_boiling_temperature = water_boiling_temperature
-    p.atm_specific_heat = atm_specific_heat
-    p.atm_density = atm_density
     p.atm_temperature = atm_temperature
-    p.atm_wind = atm_wind
+    p.h_conv = h_conv
     p.rainfall = rainfall
     p.ground_temperature = ground_temperature
 #
 #-------------------------------------------------------------------------------
 def set_numerics(
-    method = '',
+    method = 'OHA',
     efficiency_min = 0,
     efficiency_max = 10000,
     cfl_max = 0.5,
-    lambda_max = 0.5,
-    safety_factor = 0.9,
     dt_max = 10.,
-    fraction_to_freeze = .01,
-    tiny_flow = 1e-3,
-    pos_eps = 1e-16
+    fraction_to_freeze = 1.0,
+    tiny_flow = 0.1
     ):
     #
     p.method = method
     p.efficiency_min = efficiency_min
     p.efficiency_max = efficiency_max
     p.cfl_max = cfl_max
-    p.lambda_max = lambda_max
-    p.safety_factor = safety_factor
     p.dt_max = dt_max
     p.fraction_to_freeze = fraction_to_freeze
     p.tiny_flow = tiny_flow
-    p.pos_eps = pos_eps
 #
 #-------------------------------------------------------------------------------
 def set_runtime(
     max_iter = None,
-    max_time = 0 # s
+    max_time_hr = 0 # s
     ):
     #
-    time_limited = max_time != None
+    time_limited = max_time_hr != None
     iter_limited = max_iter != None
     if not iter_limited and not time_limited:
         # Error: kill immediately
@@ -251,7 +227,7 @@ def set_runtime(
         p.max_iter = max_iter
     elif not iter_limited and time_limited:
         # no iter limit
-        p.max_time = max_time
+        p.max_time = max_time_hr*3600
         p.max_iter = np.inf
 #
 #-------------------------------------------------------------------------------
@@ -269,19 +245,19 @@ def run():
     #
     # ICs: fields
     g.t_inundation = np.zeros(g.B0.shape, dtype = g.B0.dtype) + t_n
-    g.t_erupted = np.zeros(g.B0.shape, dtype = g.B0.dtype) - p.crust_age_at_eruption
+    g.t_erupted = np.zeros(g.B0.shape, dtype = g.B0.dtype)
     g.abs_Usurf = np.zeros(g.B0.shape, dtype = g.B0.dtype)
     g.h_n = np.zeros(g.B0.shape, dtype = g.B0.dtype)
     g.B_n = g.B0.copy()
     #
     buffer = 3 # theoretically, cfl limits buffer to 1
-    bounds = m.subset_bounds(buffer_cells = 2*buffer)
+    bounds = m.subset_bounds(t_n, buffer_cells = 2*buffer)
     x, y, h_n, B_n, te_n, ti_n, abs_U_s = m.subset_grids(bounds)
-    I = np.isfinite(x)
+    #I = np.isfinite(x)
     #
-    q_n = vents.source_term(x,y,t_n,I)
+    q_n = vents.source_term(x,y,t_n)
     if q_n.max() == 0:
-        dt = 10.0
+        dt = p.dt_max
     else:
         dt = 2 * p.tiny_flow / q_n[q_n>0].mean()
     #
@@ -294,10 +270,10 @@ def run():
         #
         # ----------------------------------------------------------------------
         # Generate Subset
-        bounds = m.subset_bounds(buffer_cells = 2*buffer)
+        bounds = m.subset_bounds(t_n, buffer_cells = 2*buffer)
         x, y, h_n, B_n, te_n, ti_n, abs_U_s = m.subset_grids(bounds)
-        I = m.active_indicator(h_n, buffer)
-        q_n = vents.source_term(x, y, t_n, I)
+        q_n = vents.source_term(x, y, t_n)
+        I = m.active_indicator(h_n, q_n, buffer)
         # ----------------------------------------------------------------------
         # MUSCL step
         #
@@ -345,7 +321,7 @@ def run():
         # ----------------------------------------------------------------------
         # every n%10 = 0 (ie: n = 10, 20, 30 ...)
         if n%10 == 0:
-            print('|  Step (sub): {} ({})  |  dx: {}  |  Grid: {} x {}  |  dt: {:.03f}  |  dt type: {}  |  t: {:.01f}  |'.format(n,substeps, p.dx, h_n.shape[0],h_n.shape[-1], dt, dt_type, t_n))
+            print('|  Step (sub): {} ({})  |  dx: {} m  |  Grid: {} x {}  |  dt (type): {:.03f} s ({})  |  t: {:.02f} hr |'.format(n,substeps, p.dx, h_n.shape[0],h_n.shape[-1], dt, dt_type, t_n/3600.))
         # Decide on Grid Transfer
         #
         if (n >= 100) and (n%100) == 0:
@@ -366,8 +342,8 @@ def run():
     #
     t1 = clock.time()
     model_clock_ratio = (t_n-0)/(t1-t0)
-    print('|  Step (sub): {} ({})  |  dx: {}  |  Grid: {} x {}  |  dt: {:.03f}  |  dt type: {}  |  t: {:.01f}  |'.format(n,substeps, p.dx, h_n.shape[0],h_n.shape[-1], dt, dt_type, t_n))
-    print('|  Clock Time: {:.03f}  |  Model-Clock Ratio : {:.03f}  |  Relative Volume Error : {:.03}  |'.format(t1 - t0, model_clock_ratio, vol_error))
+    print('|  Step (sub): {} ({})  |  dx: {} m  |  Grid: {} x {}  |  dt (type): {:.03f} s ({})  |  t: {:.02f} hr |'.format(n,substeps, p.dx, h_n.shape[0],h_n.shape[-1], dt, dt_type, t_n/3600.))
+    print('|  Clock Time: {:.03f} s |  Model-Clock Ratio : {:.03f}  |  Relative Volume Error : {:.03}  |'.format(t1 - t0, model_clock_ratio, vol_error))
     #
     # Postprocessing:
     print('| --- Postprocessing --- |')
@@ -382,6 +358,10 @@ def set_output(
     path_out = ''
     ):
     #
+    # if does not exist, make it
+    path_out = os.path.join(path_out, '')
+    os.makedirs(path_out, exist_ok = True)
+    #
     p.path_out = path_out
 #
 #-------------------------------------------------------------------------------
@@ -395,7 +375,7 @@ def write_nc(sim_metadata):
     abs_grad_ti = rheo.slope_SAN(g.t_inundation, I)
     advance_rate[I] = 1. / (abs_grad_ti + p.pos_eps)
     #
-    file = p.path_out + 'out.nc'
+    file = os.path.join(p.path_out, 'out.nc')
     # --------------------------------------------------------------------------
     # Overwrite file
     #
@@ -410,124 +390,218 @@ def write_nc(sim_metadata):
     # OPEN NEW DATASET
     dset = Dataset(file, 'w')
     #
-    g_meta = dset.createGroup('METADATA')
-    g_data = dset.createGroup('DATA')
-    g_data_phy = g_data.createGroup('PHYSICS')
-    g_data_haz = g_data.createGroup('HAZARDS')
+    g_meta      = dset.createGroup('METADATA')
+    g_data      = dset.createGroup('DATA')
+    g_data_par  = g_data.createGroup('PARAMS')
+    g_data_phy  = g_data.createGroup('PHYSICS')
+    g_data_haz  = g_data.createGroup('HAZARDS')
     #
     # DIMENSIONS
     ny,nx = g.B0.shape
-    n_x = g_data.createDimension('cols',nx)
-    n_y = g_data.createDimension('rows',ny)
-    n_i = g_meta.createDimension('iters', len(dts))
-    scalar = g_meta.createDimension('parameter', None)
+    n_x         = g_data.createDimension('cols',nx)
+    n_y         = g_data.createDimension('rows',ny)
+    n_i         = g_meta.createDimension('iters', len(dts))
+    scalar      = g_meta.createDimension('parameter', None)
+    scalar      = g_data_par.createDimension('parameter', None)
     #
     # VARIABLES
-    dset_dts = g_meta.createVariable('all_timesteps', np.float32, ('iters',))
-    dset_clock = g_meta.createVariable('all_clock', np.float32, ('iters',))
-    dset_cells = g_meta.createVariable('all_num_cells', np.float32, ('iters',))
-    dset_tmax = g_meta.createVariable('model_duration','f4', ('parameter',))
-    dset_wall = g_meta.createVariable('wall_runtime','f4', ('parameter',))
-    dset_vol_err = g_meta.createVariable('volume_error','f4', ('parameter',))
+    dset_dts        = g_meta.createVariable('all_timesteps', np.float32, ('iters',))
+    dset_clock      = g_meta.createVariable('all_clock', np.float32, ('iters',))
+    dset_cells      = g_meta.createVariable('all_num_cells', np.float32, ('iters',))
+    dset_tmax       = g_meta.createVariable('model_duration','f4', ('parameter',))
+    dset_wall       = g_meta.createVariable('wall_runtime','f4', ('parameter',))
+    dset_vol_err    = g_meta.createVariable('volume_error','f4', ('parameter',))
     #
-    dset_x = g_data.createVariable('x', np.float32, ('rows','cols')) # (ny,nx)
-    dset_y = g_data.createVariable('y', np.float32, ('rows','cols')) # (ny,nx)
-    dset_lon = g_data.createVariable('lon', np.float32, ('rows','cols')) # (ny,nx)
-    dset_lat = g_data.createVariable('lat', np.float32, ('rows','cols')) # (ny,nx)
-    dset_B_init = g_data.createVariable('topo_init', np.float32, ('rows','cols')) # (ny,nx)
+    dset_x          = g_data.createVariable('x', np.float32, ('rows','cols')) # (ny,nx)
+    dset_y          = g_data.createVariable('y', np.float32, ('rows','cols')) # (ny,nx)
+    dset_lon        = g_data.createVariable('lon', np.float32, ('rows','cols')) # (ny,nx)
+    dset_lat        = g_data.createVariable('lat', np.float32, ('rows','cols')) # (ny,nx)
+    dset_B_init     = g_data.createVariable('topo_init', np.float32, ('rows','cols')) # (ny,nx)
     #
-    dset_extent = g_data_haz.createVariable('extent', np.float32, ('rows','cols')) # (ny,nx)
-    dset_arrival = g_data_haz.createVariable('arrival_time', np.float32, ('rows','cols')) # (ny,nx)
-    dset_advance = g_data_haz.createVariable('advance_rate', np.float32, ('rows','cols')) # (ny,nx)
+    dset_T_vent                 = g_data_par.createVariable('vent_temperature','f4', ('parameter',))
+    dset_mu_vent                = g_data_par.createVariable('vent_viscosity','f4', ('parameter',))
+    dset_cryst_vent             = g_data_par.createVariable('cryst_vent','f4', ('parameter',))
+    dset_lava_density           = g_data_par.createVariable('lava_density','f4', ('parameter',))
+    dset_lava_specific_heat     = g_data_par.createVariable('lava_specific_heat','f4', ('parameter',))
+    dset_lava_conductivity      = g_data_par.createVariable('lava_conductivity','f4', ('parameter',))
+    dset_lava_diffusivity       = g_data_par.createVariable('lava_diffusivity','f4', ('parameter',))
+    dset_lava_emissivity        = g_data_par.createVariable('lava_emissivity','f4', ('parameter',))
+    dset_phi_max                = g_data_par.createVariable('phi_max','f4', ('parameter',))
+    dset_max_cryst_rate         = g_data_par.createVariable('max_cryst_rate','f4', ('parameter',))
+    dset_yield_strength_crust   = g_data_par.createVariable('yield_strength_crust','f4', ('parameter',))
+    dset_core_temperature       = g_data_par.createVariable('core_temperature','f4', ('parameter',))
+    dset_atm_temperature        = g_data_par.createVariable('atm_temperature','f4', ('parameter',))
+    dset_h_conv                 = g_data_par.createVariable('h_conv','f4', ('parameter',))
+    dset_rainfall               = g_data_par.createVariable('rainfall','f4', ('parameter',))
+    dset_ground_temperature     = g_data_par.createVariable('ground_temperature','f4', ('parameter',))
+    dset_efficiency_min         = g_data_par.createVariable('efficiency_min','f4', ('parameter',))
+    dset_efficiency_max         = g_data_par.createVariable('efficiency_max','f4', ('parameter',))
+    dset_cfl_max                = g_data_par.createVariable('cfl_max','f4', ('parameter',))
+    dset_dt_max                 = g_data_par.createVariable('dt_max','f4', ('parameter',))
+    dset_fraction_to_freeze     = g_data_par.createVariable('fraction_to_freeze','f4', ('parameter',))
+    dset_tiny_flow              = g_data_par.createVariable('tiny_flow','f4', ('parameter',))
     #
-    dset_B = g_data_phy.createVariable('topo_dyn', np.float32, ('rows','cols')) # (ny,nx)
-    dset_h = g_data_phy.createVariable('lava_thickness_dyn', np.float32, ('rows','cols')) # (ny,nx)
-    dset_h_tot = g_data_phy.createVariable('lava_thickness_total', np.float32, ('rows','cols')) # (ny,nx)
-    dset_dB = g_data_phy.createVariable('basal_change', np.float32, ('rows','cols')) # (ny,nx)
-    dset_t_ti = g_data_phy.createVariable('time_since_inundation', np.float32, ('rows','cols')) # (ny,nx)
-    dset_t_te = g_data_phy.createVariable('time_since_erupted', np.float32, ('rows','cols')) # (ny,nx)
-    dset_abs_Usurf = g_data_phy.createVariable('surface_speed', np.float32, ('rows','cols')) # (ny,nx)
-    dset_Ts = g_data_phy.createVariable('surface_temperature', np.float32, ('rows','cols')) # (ny,nx)
+    dset_extent     = g_data_haz.createVariable('extent', np.float32, ('rows','cols')) # (ny,nx)
+    dset_arrival    = g_data_haz.createVariable('arrival_time', np.float32, ('rows','cols')) # (ny,nx)
+    dset_advance    = g_data_haz.createVariable('advance_rate', np.float32, ('rows','cols')) # (ny,nx)
+    #
+    dset_B          = g_data_phy.createVariable('topo_dyn', np.float32, ('rows','cols')) # (ny,nx)
+    dset_h          = g_data_phy.createVariable('lava_thickness_dyn', np.float32, ('rows','cols')) # (ny,nx)
+    dset_h_tot      = g_data_phy.createVariable('lava_thickness_total', np.float32, ('rows','cols')) # (ny,nx)
+    dset_dB         = g_data_phy.createVariable('basal_change', np.float32, ('rows','cols')) # (ny,nx)
+    dset_t_ti       = g_data_phy.createVariable('time_since_inundation', np.float32, ('rows','cols')) # (ny,nx)
+    dset_t_te       = g_data_phy.createVariable('time_since_erupted', np.float32, ('rows','cols')) # (ny,nx)
+    dset_abs_Usurf  = g_data_phy.createVariable('surface_speed', np.float32, ('rows','cols')) # (ny,nx)
+    dset_Ts         = g_data_phy.createVariable('surface_temperature', np.float32, ('rows','cols')) # (ny,nx)
     #
     # VARIABLE ATTRIBUTES
-    dset_dts.description = 'timestep size for each iteration'
-    dset_clock.description = 'wall clock time for each iteration'
-    dset_cells.description = 'number of active cells for each iteration'
-    dset_tmax.description = 'model duration'
-    dset_wall.description = 'wall clock duration'
-    dset_vol_err.description = 'lava volume relative error: deposit vs. erupted'
+    dset_dts.description        = 'timestep size for each iteration'
+    dset_clock.description      = 'wall clock time for each iteration'
+    dset_cells.description      = 'number of active cells for each iteration'
+    dset_tmax.description       = 'model duration'
+    dset_wall.description       = 'wall clock duration'
+    dset_vol_err.description    = 'lava volume relative error: deposit vs. erupted'
     #
-    dset_x.description = 'distance east of source'
-    dset_y.description = 'distance north of source'
-    dset_lon.description = 'longitude'
-    dset_lat.description = 'latitude'
+    dset_x.description      = 'distance east of source'
+    dset_y.description      = 'distance north of source'
+    dset_lon.description    = 'longitude'
+    dset_lat.description    = 'latitude'
     dset_B_init.description = 'initial DEM'
     #
-    dset_extent.description = 'lava inundation flag'
-    dset_arrival.description = 'lava arrival time at each cell'
-    dset_advance.description = 'lava advance rate at each cell'
+    dset_T_vent.description                 = 'vent temperature (well-mixed assumption)'
+    dset_mu_vent.description                = 'vent viscosity (liquid)'
+    dset_cryst_vent.description             = 'erupted crystal fraction'
+    dset_lava_density.description           = 'bulk density'
+    dset_lava_specific_heat.description     = 'lumped specific heat'
+    dset_lava_conductivity.description      = 'lumped thermal conductivity'
+    dset_lava_diffusivity.description       = 'lumped thermal diffusivity'
+    dset_lava_emissivity.description        = 'lava surface emissivity'
+    dset_phi_max.description                = 'max packing crystal fraction'
+    dset_max_cryst_rate.description         = 'largest crystallization rate'
+    dset_yield_strength_crust.description   = 'yield strength of crustal material'
+    dset_core_temperature.description       = 'flow core temperature (insulated)'
+    dset_atm_temperature.description        = 'ambient temperature above flow'
+    dset_h_conv.description                 = 'total heat transfer coefficient (natural and convective)'
+    dset_rainfall.description               = 'rainfall rate'
+    dset_ground_temperature.description     = 'ambient temperature below flow'
+    dset_efficiency_min.description         = 'min allowable model-clock ratio before coarser grid used'
+    dset_efficiency_max.description         = 'max allowable model-clock ratio before finer grid used'
+    dset_cfl_max.description                = 'max CFL number (scheme-dependent, must be less than 1)'
+    dset_dt_max.description                 = 'max allowable time step'
+    dset_fraction_to_freeze.description     = 'fraction of lava thickness to freeze per time step for eligible cells'
+    dset_tiny_flow.description              = 'minimum real lava thickness'
     #
-    dset_B.description = 'dynamic topography = initial DEM + basal change'
-    dset_h.description = 'dynamic lava thickness'
-    dset_h_tot.description = 'total deposit thickness = dynamic lava thickness + basal change'
-    dset_dB.description = 'vertical topographic changes (freezing / remelting)'
-    dset_t_ti.description = 'time since each cell was inundated'
-    dset_t_te.description = 'lava surface travel time from vent to cell'
-    dset_abs_Usurf.description = 'lava surface speed (magnitude)'
-    dset_Ts.description = 'lava surface temperature'
+    dset_extent.description     = 'lava inundation flag'
+    dset_arrival.description    = 'lava arrival time at each cell'
+    dset_advance.description    = 'lava advance rate at each cell'
+    #
+    dset_B.description          = 'dynamic topography = initial DEM + basal change'
+    dset_h.description          = 'dynamic lava thickness'
+    dset_h_tot.description      = 'total deposit thickness = dynamic lava thickness + basal change'
+    dset_dB.description         = 'vertical topographic changes (freezing / remelting)'
+    dset_t_ti.description       = 'time since each cell was inundated'
+    dset_t_te.description       = 'lava surface travel time from vent to cell'
+    dset_abs_Usurf.description  = 'lava surface speed (magnitude)'
+    dset_Ts.description         = 'lava surface temperature'
 
-    dset_dts.units = 's'
-    dset_clock.units = 's'
-    dset_cells.units = '-'
-    dset_tmax.units = 's'
-    dset_wall.units = 's'
-    dset_vol_err.units = '-'
+    dset_dts.units      = 's'
+    dset_clock.units    = 's'
+    dset_cells.units    = '-'
+    dset_tmax.units     = 's'
+    dset_wall.units     = 's'
+    dset_vol_err.units  = '-'
     #
-    dset_x.units = 'm'
-    dset_y.units = 'm'
-    dset_lon.units = 'decimal degrees east'
-    dset_lat.units = 'decimal degrees north'
-    dset_B_init.units = 'm asl'
+    dset_x.units        = 'm'
+    dset_y.units        = 'm'
+    dset_lon.units      = 'decimal degrees east'
+    dset_lat.units      = 'decimal degrees north'
+    dset_B_init.units   = 'm asl'
     #
-    dset_extent.units = '-'
-    dset_arrival.units = 's'
-    dset_advance.units = 'm s-1'
+    dset_T_vent.units               = 'K'
+    dset_mu_vent.units              = 'Pa s'
+    dset_cryst_vent.units           = '-'
+    dset_lava_density.units         = 'kg m-3'
+    dset_lava_specific_heat.units   = 'J kg-1 K-1'
+    dset_lava_conductivity.units    = 'W m-1 K-1'
+    dset_lava_diffusivity.units     = 'm2 s-1'
+    dset_lava_emissivity.units      = '-'
+    dset_phi_max.units              = '-'
+    dset_max_cryst_rate.units       = 's-1'
+    dset_yield_strength_crust.units = 'Pa'
+    dset_core_temperature.units     = 'K'
+    dset_atm_temperature.units      = 'K'
+    dset_h_conv.units               = 'W m-2 K-1'
+    dset_rainfall.units             = 'm s-1'
+    dset_ground_temperature.units   = 'K'
+    dset_efficiency_min.units       = '-'
+    dset_efficiency_max.units       = '-'
+    dset_cfl_max.units              = '-'
+    dset_dt_max.units               = 's'
+    dset_fraction_to_freeze.units   = '-'
+    dset_tiny_flow.units            = 'm'
     #
-    dset_B.units = 'm asl'
-    dset_h.units = 'm'
-    dset_h_tot.units = 'm'
-    dset_dB.units = 'm'
-    dset_t_ti.units = 's'
-    dset_t_te.units = 's'
-    dset_abs_Usurf.units = 'm s-1'
-    dset_Ts.units = 'C'
+    dset_extent.units   = '-'
+    dset_arrival.units  = 's'
+    dset_advance.units  = 'm s-1'
+    #
+    dset_B.units            = 'm asl'
+    dset_h.units            = 'm'
+    dset_h_tot.units        = 'm'
+    dset_dB.units           = 'm'
+    dset_t_ti.units         = 's'
+    dset_t_te.units         = 's'
+    dset_abs_Usurf.units    = 'm s-1'
+    dset_Ts.units           = 'C'
     #
     # ADD VALUES TO VARIABLES
-    dset_dts[:] = np.float32(dts)
-    dset_clock[:] = np.float32(step_times)
-    dset_cells[:] = np.float32(n_nodes)
-    dset_tmax[0] = np.float32(t_n)
-    dset_wall[0] = np.float32(wall_duration)
-    dset_vol_err[0] = np.float32(vol_error)
+    dset_dts[:]         = np.float32(dts)
+    dset_clock[:]       = np.float32(step_times)
+    dset_cells[:]       = np.float32(n_nodes)
+    dset_tmax[0]        = np.float32(t_n)
+    dset_wall[0]        = np.float32(wall_duration)
+    dset_vol_err[0]     = np.float32(vol_error)
     #
-    dset_x[:] = np.float32(g.x)
-    dset_y[:] = np.float32(g.y)
-    dset_lon[:] = np.float32(g.lon)
-    dset_lat[:] = np.float32(g.lat)
-    dset_B_init[:] = np.float32(g.B0)
+    dset_x[:]       = np.float32(g.x)
+    dset_y[:]       = np.float32(g.y)
+    dset_lon[:]     = np.float32(g.lon)
+    dset_lat[:]     = np.float32(g.lat)
+    dset_B_init[:]  = np.float32(g.B0)
     #
-    dset_extent[:] = np.float32(I)
-    dset_arrival[:] = np.float32(g.t_inundation)
-    dset_advance[:] = np.float32(advance_rate)
+    dset_T_vent[0]                 = np.float32(p.T_vent)
+    dset_mu_vent[0]                = np.float32(p.viscosity_vent)
+    dset_cryst_vent[0]             = np.float32(p.cryst_vent)
+    dset_lava_density[0]           = np.float32(p.lava_density)
+    dset_lava_specific_heat[0]     = np.float32(p.lava_specific_heat)
+    dset_lava_conductivity[0]      = np.float32(p.lava_conductivity)
+    dset_lava_diffusivity[0]       = np.float32(p.lava_diffusivity)
+    dset_lava_emissivity[0]        = np.float32(p.lava_emissivity)
+    dset_phi_max[0]                = np.float32(p.phi_max)
+    dset_max_cryst_rate[0]         = np.float32(p.max_cryst_rate)
+    dset_yield_strength_crust[0]   = np.float32(p.yield_strength_crust)
+    dset_core_temperature[0]       = np.float32(p.core_temperature)
+    dset_atm_temperature[0]        = np.float32(p.atm_temperature)
+    dset_h_conv[0]                 = np.float32(p.h_conv)
+    dset_rainfall[0]               = np.float32(p.rainfall)
+    dset_ground_temperature[0]     = np.float32(p.ground_temperature)
+    dset_efficiency_min[0]         = np.float32(p.efficiency_min)
+    dset_efficiency_max[0]         = np.float32(p.efficiency_max)
+    dset_cfl_max[0]                = np.float32(p.cfl_max)
+    dset_dt_max[0]                 = np.float32(p.dt_max)
+    dset_fraction_to_freeze[0]     = np.float32(p.fraction_to_freeze)
+    dset_tiny_flow[0]              = np.float32(p.tiny_flow)
     #
-    dset_B[:] = np.float32(g.B_n)
-    dset_h[:] = np.float32(g.h_n)
-    dset_h_tot[:] = np.float32(h_total)
-    dset_dB[:] = np.float32(dB)
-    dset_t_ti[:] = np.float32(t_n - g.t_inundation)
-    dset_t_te[:] = np.float32(t_n - g.t_erupted)
-    dset_abs_Usurf[:] = np.float32(g.abs_Usurf)
-    dset_Ts[:] = np.float32(g.surface_T_n)
+    dset_extent[:]      = np.float32(I)
+    dset_arrival[:]     = np.float32(g.t_inundation)
+    dset_advance[:]     = np.float32(advance_rate)
+    #
+    dset_B[:]           = np.float32(g.B_n)
+    dset_h[:]           = np.float32(g.h_n)
+    dset_h_tot[:]       = np.float32(h_total)
+    dset_dB[:]          = np.float32(dB)
+    dset_t_ti[:]        = np.float32(t_n - g.t_inundation)
+    dset_t_te[:]        = np.float32(t_n - g.t_erupted)
+    dset_abs_Usurf[:]   = np.float32(g.abs_Usurf)
+    dset_Ts[:]          = np.float32(g.surface_T_n)
     #
     # WRITE FILE
     dset.close()

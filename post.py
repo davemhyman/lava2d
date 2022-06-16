@@ -30,16 +30,18 @@ def make_flow_maps(fields, dz = 10):
     #
     B_contours = np.arange(np.floor(g.B0.min()/dz), np.ceil(g.B0.max()/dz) + 2) * dz
     new_cmap = truncate_colormap(plt.get_cmap('terrain'), 0.25, 0.9)
-    I = g.h_n > p.tiny_flow
+    dB = g.B_n-g.B0
+    I = dB + g.h_n > p.tiny_flow
     #
-    x_vent = g.x[vents.source_term(g.x,g.y,p.t_max,np.isfinite(g.x))>p.pos_eps]
-    y_vent = g.y[vents.source_term(g.x,g.y,p.t_max,np.isfinite(g.x))>p.pos_eps]
+    x_vent = g.x[vents.source_term(g.x,g.y,p.t_max)>p.pos_eps]
+    y_vent = g.y[vents.source_term(g.x,g.y,p.t_max)>p.pos_eps]
     #
     for type in fields:
         if type == 'stoch_bed':
             #
             fig, ax1 = plt.subplots(figsize=(16,8))
-            plt.contourf(g.x, g.y, g.B_n-g.B0, 51, cmap= 'terrain')
+            pid = plt.pcolormesh(g.x, g.y, dB, cmap= 'terrain', shading = 'auto', zorder = 1);plt.colorbar()
+            cid = plt.contour(g.x, g.y, g.B_n, B_contours, linewidths = .1, colors = 'k', zorder = 2)
             plt.axis('equal')
             plt.plot(x_vent, y_vent, 'r^')
             plt.title('Stochastic Bed Variation (m)')
@@ -48,10 +50,10 @@ def make_flow_maps(fields, dz = 10):
         elif type == 'height':
             #
             fig, ax1 = plt.subplots(figsize=(16,8))
-            cfB = plt.contourf(g.x, g.y, g.B_n, B_contours, cmap= new_cmap, zorder = 1)
+            cfB = plt.contourf(g.x, g.y, g.B_n, B_contours, cmap= new_cmap, zorder = 1);plt.colorbar()
             cB = plt.contour(g.x, g.y, g.B_n, B_contours, linewidths = .2, colors = 'k', zorder = 2)
-            pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(g.h_n, ~I), cmap = 'magma', shading = 'auto', zorder = 3);plt.colorbar()
-            cid = plt.contour(g.x, g.y, g.h_n, 21, linewidths = .2, colors = 'k', zorder = 4)
+            pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(dB+g.h_n, ~I), cmap = 'magma', shading = 'auto', zorder = 3);plt.colorbar()
+            cid = plt.contour(g.x, g.y, dB+g.h_n, 21, linewidths = .2, colors = 'k', zorder = 4)
             axeq = plt.axis('equal')
             U = np.sqrt(g.ux_n**2 + g.uy_n**2)
             qvr = ax1.quiver(g.x[::2,::2],g.y[::2,::2],g.ux_n[::2,::2], g.uy_n[::2,::2], scale_units='x', scale = U.max()/(10*p.dx), units = 'x', width = 0.1*p.dx, color='blue', zorder = 5)
@@ -66,7 +68,7 @@ def make_flow_maps(fields, dz = 10):
             S_contours = np.arange(np.floor(np.min(S_I[I])), np.ceil(np.max(S_I)), 1)
             fig, ax1 = plt.subplots(figsize=(16,8))
             cfB = plt.contourf(g.x, g.y, g.B_n, B_contours, cmap= new_cmap, zorder = 1)
-            pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(g.h_n, ~I), cmap = 'magma', shading = 'auto', zorder = 2);plt.colorbar()
+            pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(dB+g.h_n, ~I), cmap = 'magma', shading = 'auto', zorder = 2);plt.colorbar()
             cid = plt.contour(g.x, g.y, S_I, S_contours, linewidths = .1, colors = 'k', zorder = 3)
             cB = plt.contour(g.x, g.y, g.B_n+g.h_n, B_contours, linewidths = .2, colors = 'k', zorder = 4)
             axeq = plt.axis('equal')
@@ -81,8 +83,8 @@ def make_flow_maps(fields, dz = 10):
             fig, ax1 = plt.subplots(figsize=(16,8))
             cfB = plt.contourf(g.x, g.y, g.B_n, B_contours, cmap= new_cmap, zorder = 1)
             cB = plt.contour(g.x, g.y, g.B_n, B_contours, linewidths = .2, colors = 'k', zorder = 2)
-            pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(g.h_n,~I), cmap = 'magma', shading = 'auto', norm = c.LogNorm(), vmin = p.tiny_flow, vmax = np.ceil(g.h_n.max()), zorder = 3);plt.colorbar()
-            cid = plt.contour(g.x, g.y, g.h_n, p.pos_eps+np.arange(0, np.ceil(g.h_n.max()), 0.1), linewidths = .2, colors = 'k', zorder = 4)
+            pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(dB+g.h_n,~I), cmap = 'magma', shading = 'auto', norm = c.LogNorm(), vmin = p.tiny_flow, vmax = np.ceil(g.h_n.max()), zorder = 3);plt.colorbar()
+            cid = plt.contour(g.x, g.y, dB+g.h_n, p.pos_eps+np.arange(0, np.ceil(g.h_n.max()), 0.1), linewidths = .2, colors = 'k', zorder = 4)
             axeq = plt.axis('equal')
             U = np.sqrt(g.ux_n**2 + g.uy_n**2)
             qvr = ax1.quiver(g.x[::2,::2],g.y[::2,::2],g.ux_n[::2,::2], g.uy_n[::2,::2], scale_units='x', scale = U.max()/(10*p.dx), units = 'x', width = 0.1*p.dx, color='blue', zorder = 5)
@@ -93,7 +95,11 @@ def make_flow_maps(fields, dz = 10):
         elif type == 't_inundation':
             #
             tmax = g.t_inundation.max()
-            if tmax/86400 < 2:
+            if tmax/86400 < 0.5:
+                ti_contours = np.arange(0,tmax/3600 + 0.25, 0.25) # 15 min intervals
+            elif tmax/86400 >= 0.5 and tmax/86400 < 1:
+                ti_contours = np.arange(0,tmax/3600 + 0.5, 0.5) # 30 min intervals
+            elif tmax/86400 >= 1 and tmax/86400 < 2:
                 ti_contours = np.arange(0,tmax/3600 + 1, 1) # 1 hr intervals
             elif tmax/86400 >= 2 and tmax/86400 < 4:
                 ti_contours = np.arange(0,tmax/3600 + 2, 2) # 2 hr intervals
@@ -104,9 +110,10 @@ def make_flow_maps(fields, dz = 10):
             elif tmax/86400 >= 30:
                 ti_contours = np.arange(0,tmax/3600 + 24, 24) # 24 hr intervals
             fig, ax1 = plt.subplots(figsize=(16,8))
-            cfB = plt.contourf(g.x, g.y, g.B_n, B_contours, cmap= new_cmap, zorder = 1)
+            cfB = plt.contourf(g.x, g.y, g.B_n, B_contours, cmap= new_cmap, zorder = 1);plt.colorbar()
             cB = plt.contour(g.x, g.y, g.B_n, B_contours, linewidths = .2, colors = 'k', zorder = 2)
-            pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(g.t_inundation/3600,~I), cmap = 'magma', shading = 'auto', zorder = 3);plt.colorbar()
+            #pid = plt.pcolormesh(g.x, g.y, np.ma.masked_array(g.t_inundation/3600,~I), cmap = 'magma', shading = 'auto', zorder = 3);plt.colorbar()
+            cid = plt.contourf(g.x, g.y, np.ma.masked_array(g.t_inundation/3600,~I), ti_contours, cmap = 'magma', zorder = 3);plt.colorbar()
             cid = plt.contour(g.x, g.y, g.t_inundation/3600, ti_contours, linewidths = .2, colors = 'k', zorder = 4)
             axeq = plt.axis('equal')
             U = np.sqrt(g.ux_n**2 + g.uy_n**2)
@@ -311,7 +318,7 @@ def make_all_physics_grids(t_n):
     g.tau_0_core_n = rheo.yield_stress(cryst_core)
     g.Bn_core_n = bingham_number(g.tau_0_core_n)
     g.phi_S = therm.surface_BL(t_n, g.t_erupted, g.h_n, p.core_temperature)
-    g.R_n, g.Rs_n, fluidity_n, abs_grad_S_n = rheo.rheo_factor_bl_S(g.h_n, g.B_n, g.phi_S, cryst_core)
+    g.R_n, g.Rs_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(g.h_n, g.B_n, g.phi_S, cryst_core)
     kinematic_viscosity =  np.sqrt(2) * g.mu_core_n / p.lava_density
     g.Pr_n = kinematic_viscosity / p.lava_diffusivity
     g.Pe_n = g.abs_Usurf * g.h_n / p.lava_diffusivity
@@ -321,7 +328,9 @@ def make_all_physics_grids(t_n):
     g.ux_n, g.uy_n = velocity2d(g.h_n, g.B_n, g.R_n)
     g.Re_n = 3 * g.R_n * np.sqrt(g.ux_n**2 + g.uy_n**2) * g.h_n / p.g
     #
-    valid = (g.h_n > p.tiny_flow)
+    # Compute surface T for unfrozen and frozen
+    dB = g.B_n - g.B0
+    valid = (dB + g.h_n > p.tiny_flow)
     tv_s = t_n - g.t_erupted[valid] + p.pos_eps # (n_valid_x)
     g.surface_T_n = p.atm_temperature + np.zeros(g.h_n.shape, dtype = g.h_n.dtype) # initialize output space
     if np.any(valid):
