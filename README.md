@@ -15,7 +15,8 @@ The main architecture is as follows:
 
 > rheo.py and therm.py contain submodules for the thermorheologic model, vents.py generates the source term, topo.py ingests and prepares the DEM as well as freezes stagnant, cold lava cells.  
 
-If something isn't working for you then please let me know.
+
+I have supplied an example vent file in the "example_vents" directory. If something isn't working for you then please let me know.
 
 Cheers!
 Dave Hyman
