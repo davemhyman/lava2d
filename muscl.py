@@ -946,20 +946,3 @@ def step_KT2000_FD2_OSI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
 ################################################################################
 #
 ################################################################################
-
-
-# Lava2D -- too boring?
-
-# HiPrFlow-2D: High-Prandtl Flow in 2D -- too weird?
-
-# ThermaFlow -- too pharma sounding?
-
-# LavaFOR: Lava Forecasting for Operations and Research (Python version would be Lava4Py) -- too hard to remember?
-
-# BSALT: Basic System for Advecting Lava and Temperature  -- also too hard -- too app-like?
-
-# GOLF: Generalized Operational Lava Flow model -- I do not like golf
-
-# lol please halp
-
-# TEQUILA: The EQUations for Integrated Lava Advection
