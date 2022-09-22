@@ -1,8 +1,7 @@
-# lava_2d_py
+# Lava2d
 
 Hello and thanks for your interest in this project! 
 This is the core python code needed to run the lava flow propagation model described in Hyman et al. (2022, in review: JGR - Solid Earth). 
-There will likely be a name change to this code, so please consider "lava_2d_py" a placeholder.  
 
 **Please note: This model is not yet peer reviewed, so use at your own risk and discretion. This model is intended only for research purposes currently.**
 
