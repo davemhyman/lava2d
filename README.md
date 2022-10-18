@@ -1,7 +1,7 @@
 # Lava2d
 
 Hello and thanks for your interest in this project! 
-This is the core python code needed to run the lava flow propagation model described in Hyman et al. (2022, in review: JGR - Solid Earth). 
+This is the core python code needed to run the lava flow propagation model described in Hyman et al. (2022, JGR - Solid Earth). 
 
 **Please note: This model is not yet peer reviewed, so use at your own risk and discretion. This model is intended only for research purposes currently.**
 
@@ -20,3 +20,8 @@ I have supplied an example vent file in the "example_vents" directory. If someth
 
 Cheers!
 Dave Hyman
+
+
+References:
+Hyman, D. M. R., Dietterich, H. R., and Patrick, M. R. (2022). Toward next-generation lava flow forecasting: Development of a fast, physics-based lava propagation model. Journal of Geophysical Research: Solid Earth, 127(10):e2022JB024998.
+
