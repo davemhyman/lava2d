@@ -11,8 +11,6 @@ The main architecture is as follows:
 
 > input.py is for input parameters and pointers to necessary input files such as a DEM (looking for a GeoTIFF), a directory with vent files (all txt), and a directory wher to dump the output file (will be NetCDF). 
 
-> The model can be run from a bash shell with: python input.py 
-
 > rheo.py and therm.py contain submodules for the thermorheologic model, vents.py generates the source term, topo.py ingests and prepares the DEM as well as freezes stagnant, cold lava cells.  
 
 
