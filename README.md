@@ -23,5 +23,6 @@ Dave Hyman
 
 
 References:
+
 Hyman, D. M. R., Dietterich, H. R., and Patrick, M. R. (2022). Toward next-generation lava flow forecasting: Development of a fast, physics-based lava propagation model. Journal of Geophysical Research: Solid Earth, 127(10):e2022JB024998.
 
