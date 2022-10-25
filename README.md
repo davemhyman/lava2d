@@ -3,7 +3,7 @@
 Hello and thanks for your interest in this project! 
 This is the core python code needed to run the lava flow propagation model described in Hyman et al. (2022, JGR - Solid Earth). 
 
-**Please note: This model is intended for fluid dynamic research purposes only and does not imply endorsement by the U.S. Government, nor do model results represent official forecasts.**
+**Please note: This model is intended for fluid dynamic research purposes only and does not imply endorsement by the U.S. Government. Modeling results do not represent forecasts, official or otherwise.**
 
 The main architecture is as follows:
 
