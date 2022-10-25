@@ -123,9 +123,9 @@ def set_source(
 #
 #-------------------------------------------------------------------------------
 def set_vent_props(
-    temperature_vent_C = 1140, # deg C
-    viscosity_vent = 100, # Pa s
-    cryst_vent = 0, # erupted crystal fraction
+    temperature_vent_C = None, # deg C
+    viscosity_vent = None, # Pa s
+    cryst_vent = None, # erupted crystal fraction
     ):
     #
     p.T_vent = temperature_vent_C + 273
@@ -134,12 +134,12 @@ def set_vent_props(
 #
 #-------------------------------------------------------------------------------
 def set_lava_props(
-    liquid_density = 2700, # kg m-3
-    porosity = 0.4,
+    liquid_density = None, # kg m-3
+    porosity = None,
     lava_conductivity = None, # W m-1 K-1
-    lava_diffusivity = 5.5e-7, # m2 s-1
-    lava_specific_heat = 1000, # J kg-1 K-1
-    lava_emissivity = 0.95,
+    lava_diffusivity = None, # m2 s-1
+    lava_specific_heat = None, # J kg-1 K-1
+    lava_emissivity = None,
     ):
     #
     p.lava_density = liquid_density * (1 - porosity)
@@ -155,9 +155,9 @@ def set_lava_props(
 #
 #-------------------------------------------------------------------------------
 def set_rheo(
-    phi_max = 0.67, # max crystal packing fraction
-    max_cryst_rate = 0, # s-1
-    yield_strength_crust = 0, # Pa
+    phi_max = None, # max crystal packing fraction
+    max_cryst_rate = None, # s-1
+    yield_strength_crust = None, # Pa
     glass_temperature = None, # K
     T_core_T_vent_equal = True
     ):
@@ -179,10 +179,10 @@ def set_rheo(
 #
 #-------------------------------------------------------------------------------
 def set_ambient(
-    atm_temperature = 300, # K
-    h_conv = 10, # m s-1
-    rainfall = 0, # m s-1
-    ground_temperature = 300 # K
+    atm_temperature = None, # K
+    h_conv = None, # m s-1
+    rainfall = None, # m s-1
+    ground_temperature = None # K
     ):
     #
     p.atm_temperature = atm_temperature
@@ -193,12 +193,12 @@ def set_ambient(
 #-------------------------------------------------------------------------------
 def set_numerics(
     method = 'OHA',
-    efficiency_min = 0,
-    efficiency_max = 10000,
-    cfl_max = 0.5,
-    dt_max = 10.,
-    fraction_to_freeze = 1.0,
-    tiny_flow = 0.1
+    efficiency_min = None,
+    efficiency_max = None,
+    cfl_max = None,
+    dt_max = None,
+    fraction_to_freeze = None,
+    tiny_flow = None
     ):
     #
     p.method = method
