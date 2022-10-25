@@ -3,7 +3,7 @@
 Hello and thanks for your interest in this project! 
 This is the core python code needed to run the lava flow propagation model described in Hyman et al. (2022, JGR - Solid Earth). 
 
-**Please note: This model is not yet peer reviewed, so use at your own risk and discretion. This model is intended only for research purposes currently.**
+**Please note: This model is intended for fluid dynamic research purposes only and does not imply endorsement by the U.S. Government, nor do model results represent official forecasts.**
 
 The main architecture is as follows:
 
@@ -18,7 +18,7 @@ The main architecture is as follows:
 
 I have supplied an example vent file in the "example_vents" directory. If something isn't working for you then please let me know.
 
-Cheers!
+Cheers,
 Dave Hyman
 
 
