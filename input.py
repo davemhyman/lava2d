@@ -10,7 +10,7 @@ sim.set_topo( # set DEM info
     Lon_UpperRight      = 0.00, # bounding box: upper-right longitude
     Lat_UpperRight      = 0.00,   # bounding box: upper-right latitude
     fill_level          = 0.0,     # fill topography up to fill_level (m.a.s.l.)
-    dx_desired          = 40,          # meters
+    dx_desired          = 0,          # meters
     smooth_n_times      = 0
     )
 
