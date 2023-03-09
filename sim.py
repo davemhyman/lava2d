@@ -247,7 +247,8 @@ def run():
     g.t_inundation = np.zeros(g.B0.shape, dtype = g.B0.dtype) + t_n
     g.t_erupted = np.zeros(g.B0.shape, dtype = g.B0.dtype)
     g.abs_Usurf = np.zeros(g.B0.shape, dtype = g.B0.dtype)
-    g.h_n = np.zeros(g.B0.shape, dtype = g.B0.dtype)
+    q_init_global = vents.source_term(g.x,g.y,0)
+    g.h_n = np.zeros(g.B0.shape, dtype = g.B0.dtype) + p.pos_eps*q_init_global
     g.B_n = g.B0.copy()
     #
     buffer = 3 # theoretically, cfl limits buffer to 1
