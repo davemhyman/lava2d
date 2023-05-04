@@ -1,13 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy import signal
-from scipy import interpolate
 import numexpr as ne
 
 from globals import params as p
 from globals import grids as g
 import thermal as therm
-import vents
 import topo
 import rheo
 
@@ -27,9 +23,6 @@ def update_inundation_times(t_inundation, h_n, t, dt):
     t_inundation[not_inundated_last] = t # all un-inundated cells --> time t
     t_inundation[update_t_in] = t - 0.5*dt # all recently inundated cells --> time t-dt/2
     return t_inundation
-
-
-
 
 
 def update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij):
@@ -72,29 +65,6 @@ def update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, 
     return abs_Usurf
 
 
-
-def update_te_from_inundation(te, Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I):
-    # Implicitly global:
-    # Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
-    #
-    # global te
-    #
-    # --------------------------------------------------------------------------
-    # Surface Speed
-    abs_U_s = np.zeros(h.shape, dtype = h.dtype)
-    abs_U_s[I] = Rsurf_n[I] * abs_grad_S_n[I] * h[I]**2
-    #
-    # --------------------------------------------------------------------------
-    # Update t_erupted
-    speed_ratio_ij = local_mean((R_n + p.pos_eps) / (Rsurf_n + p.pos_eps))[I]
-    te_ij_update = t_n - speed_ratio_ij * ti[I] # assume surface travel time is ~ 2/3 of bulk current
-    te_ij_update[q_ij > 0] = t_n + dt # ensure source conditon  # (rows, cols)
-    te[I] = te_ij_update
-    #
-    return abs_Usurf
-
-
-
 ################################################################################
 # Adaptive Grid Subset Tools
 ################################################################################
@@ -105,45 +75,6 @@ def subset_bounds(t, buffer_cells = 5):
     x_UpperLeft, y_UpperLeft = g.x[0,0], g.y[0,0]
     #
     I = g.h_n > 0
-    #
-    '''
-    # Correct for vent areas
-    I[180:225,65:95] = True
-    #
-    # need faster vent area corrector
-    # static corrector is pretty fast if vents are close together
-    # cannot compute corrector region every time -- too slow!
-    # could make a global grid g.t_on with vent area cells having the value of time when they turn on
-    # similar grid for when they shut off (g.t_off)
-    # (g.t_on <= t_n) and (t_n <= g.t_off) demarcates vent areas where discharge is ongoing
-    # g.discharge_ongoing = np.logical_and(g.t_on <= t_n, g.t_off >= t_n)
-    # I = np.logical_or(g.h_n > 0, g.discharge_ongoing)
-    #
-    #
-    #
-    #
-    n_vents = len(p.vent_param_splines)
-    dxy_min = min(p.dx,p.dy)
-    for n in range(n_vents):
-        x0,y0,x1,y1,W,Q_n = p.vent_param_splines[n](t) # scalars
-        if Q_n != 0:
-            L = np.sqrt((x1-x0)**2 + (y1-y0)**2)
-            bw = int(0.5 * max(L,W) / dxy_min) + 1
-            xavg = 0.5*(x0+x1)
-            yavg = 0.5*(y0+y1)
-            #
-            id_xavg = int((xavg - x_UpperLeft) / p.dx)
-            id_yavg = int((y_UpperLeft - yavg) / p.dy)
-            #
-            r_top = max(id_yavg - bw, 0)
-            r_bottom = min(id_yavg + bw+1, ny_global)
-            c_left = max(id_xavg - bw, 0)
-            c_right = min(id_xavg + bw+1, nx_global)
-            #
-            I[r_top:r_bottom, c_left:c_right] = True
-        #
-    #
-    '''
     #
     if ~np.any(I):
         # h = 0, q = 0 ==> nothing will happen
@@ -219,46 +150,6 @@ def local_mean(grid):
     SW = out[0:-2,2:]
     #out[1:-1,1:-1] = (C + W + E + N + S + NW + SE + NE + SW) / 9.
     out[1:-1,1:-1] = ne.evaluate('C + W + E + N + S + NW + SE + NE + SW') / 9.
-    return out
-
-def local_max(grid):
-    out = grid.copy()
-    C = out[1:-1,1:-1]
-    W = out[1:-1,0:-2]
-    E = out[1:-1,2:]
-    N = out[0:-2,1:-1]
-    S = out[2:,1:-1]
-    NW = out[0:-2,0:-2]
-    SE = out[2:,2:]
-    NE = out[2:,0:-2]
-    SW = out[0:-2,2:]
-    out[1:-1,1:-1] = np.maximum.reduce([C, W, E, N, S, NW, SE, NE, SW])
-    return out
-
-def local_and(grid):
-    # grid is logical array
-    # output: true if 9-cell neighborhood all true
-    out = grid.copy()
-    C = out[1:-1,1:-1]
-    W = out[1:-1,0:-2]
-    E = out[1:-1,2:]
-    N = out[0:-2,1:-1]
-    S = out[2:,1:-1]
-    NW = out[0:-2,0:-2]
-    SE = out[2:,2:]
-    NE = out[2:,0:-2]
-    SW = out[0:-2,2:]
-    out[1:-1,1:-1] = np.logical_and.reduce([C, W, E, N, S, NW, SE, NE, SW])
-    return out
-
-def local_max_EWNS(grid):
-    out = grid.copy()
-    C = out[1:-1,1:-1]
-    W = out[1:-1,0:-2]
-    E = out[1:-1,2:]
-    N = out[0:-2,1:-1]
-    S = out[2:,1:-1]
-    out[1:-1,1:-1] = np.maximum.reduce([C, W, E, N, S])
     return out
 
 def local_and_EWNS(grid):
@@ -412,118 +303,9 @@ def dt_muscl(x_speed_max, y_speed_max, K_max, h_max, q_max):
     #
     return dt, dt_type
 
-def dt_hyperbolic(x_speed_max, y_speed_max, h_max, q_max):
-    if (h_max <= p.tiny_flow):
-        dt = p.tiny_flow / (q_max + p.pos_eps) + 1e-3
-        dt_type = 'init'
-    else:
-        rate_hyperbolic = max(x_speed_max/p.dx, y_speed_max/p.dy)
-        dt = p.safety_factor * p.cfl_max / (rate_hyperbolic + p.pos_eps)
-        dt_type = 'hyp'
-        #
-    #
-    if dt > p.dt_max:
-        dt = p.dt_max
-        dt_type = 'max'
-    #
-    return dt, dt_type
-
-
 ################################################################################
 # KT 2000 MUSCL Step
 ################################################################################
-def step_KT2000_FD2_RFA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
-    # --------------------------------------------------------------------------
-    # methods:
-    # physics_quality   = 'research' (R)
-    # h_update          = 'full' (F)
-    # te_update         = 'advection' (A)
-    # --------------------------------------------------------------------------
-    # Compute all fields here:
-    phi_S = therm.surface_BL(t_n, te, h, p.core_temperature)
-    cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
-    dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
-    #
-    # --------------------------------------------------------------------------
-    # Freezout:
-    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
-    #
-    # --------------------------------------------------------------------------
-    # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
-    K_n = ne.evaluate('R_n * h**3') # much faster cubing
-    I_ij = I[2:-2,2:-2] # (rows-4, cols-4)
-    q_ij = q_n[I] # (n_active,)
-    h_ij = h[I] # (n_active,)
-    B_ij = B_n[I] # (n_active,)
-    K_ij = K_n[I] # (n_active,)
-    R_ij = R_n[I] # (n_active,)
-    h_RLUD = np.array([h[2:-2,3:-1][I_ij], h[2:-2,1:-3][I_ij], h[1:-3,2:-2][I_ij], h[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    B_RLUD = np.array([B_n[2:-2,3:-1][I_ij], B_n[2:-2,1:-3][I_ij], B_n[1:-3,2:-2][I_ij], B_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    K_RLUD = np.array([K_n[2:-2,3:-1][I_ij], K_n[2:-2,1:-3][I_ij], K_n[1:-3,2:-2][I_ij], K_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    R_RLUD = np.array([R_n[2:-2,3:-1][I_ij], R_n[2:-2,1:-3][I_ij], R_n[1:-3,2:-2][I_ij], R_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    #
-    # --------------------------------------------------------------------------
-    # Edge Variables
-    K = 0.5 * (K_ij[None,:] + K_RLUD) # (4, n_active) # order: E, W, N, S
-    R = 0.5 * (R_ij[None,:] + R_RLUD) # (4, n_active) # order: E, W, N, S
-    dxy = np.array([p.dx, -p.dx, p.dy, -p.dy])
-    grad_h = (h_RLUD - h_ij[None,:]) / dxy[:,None] # (4, n_active) # order: E, W, N, S
-    neg_grad_B = (B_ij[None,:] - B_RLUD) / dxy[:,None] # (4, n_active) # order: E, W, N, S
-    neg_R_grad_B = R * neg_grad_B
-    #
-    # --------------------------------------------------------------------------
-    # MUSCL reconstruction of edge states (piecewise linear)
-    all_h_states = np.array(muscl_linear(h, I,flux_lim_van_Leer)) # (8, n_active)
-    h_RRUU = all_h_states[0::2] # (4, n_active) RU: (EWNS, n_active)
-    h_LLDD = all_h_states[1::2] # (4, n_active) LD: (EWNS, n_active)
-    h2_RRUU = h_RRUU**2 # (4, n_active) RU: (EWNS, n_active)
-    h2_LLDD = h_LLDD**2 # (4, n_active) LD: (EWNS, n_active)
-    #
-    # --------------------------------------------------------------------------
-    # CFL related speeds
-    # a: dF/dh ~ 3 * R * -grad(B) * h**2 == 3 * Actual Advection Speed
-    max_h2 = np.maximum(h2_RRUU, h2_LLDD) # (4, n_active) # order: E, W, N, S
-    a = abs(neg_R_grad_B) * 3*max_h2 # (4, n_active) # order: E, W, N, S
-    amax = np.max(a, axis = -1) # (4,) # order: E, W, N, S
-    x_speed_max = amax[0:2].max()
-    y_speed_max = amax[2:4].max()
-    #
-    # --------------------------------------------------------------------------
-    # Time step Calculation:
-    dt, dt_type = dt_muscl(x_speed_max, y_speed_max, K_ij.max(), h_ij.max(), q_ij.max())
-    #
-    # --------------------------------------------------------------------------
-    # Fluxes from Kurganov and Tadmor (2000)
-    all_fluxes_h = 0.5 * (
-        (neg_R_grad_B*h2_RRUU - a)*h_RRUU +
-        (neg_R_grad_B*h2_LLDD + a)*h_LLDD
-        ) - K * grad_h # (4, n_active)
-    #
-    # --------------------------------------------------------------------------
-    # Logic to stop uphill fluxes
-    neg_grad_S = neg_grad_B - grad_h # order: E, W, N, S
-    is_uphill_flow = np.sign(neg_grad_S * all_fluxes_h) == -1 # (4, n_active) # order: E, W, N, S
-    all_fluxes_h[is_uphill_flow] = 0 # (4, n_active) # order: E, W, N, S
-    #
-    # --------------------------------------------------------------------------
-    # Forward Euler Update
-    h[I] += dt * (q_ij - np.sum(all_fluxes_h / dxy[:,None], axis = 0))
-    substeps = 1
-    #
-    # --------------------------------------------------------------------------
-    # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij) # Implicit globals: Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij
-    # --------------------------------------------------------------------------
-    # Update Base
-    dB = np.minimum(dt * dBdt, h) # at most can freeze h
-    h -= dB
-    B_n += dB
-    #
-    # --------------------------------------------------------------------------
-    return h, te, abs_Usurf, B_n, dt, dt_type, substeps
-
-
 
 def step_KT2000_FD2_OHA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # --------------------------------------------------------------------------
@@ -533,8 +315,7 @@ def step_KT2000_FD2_OHA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     # te_update         = 'advection' (A)
     # --------------------------------------------------------------------------
     # Compute all fields here:
-    phi_S = therm.surface_BL(t_n, te, h, p.core_temperature)
-    #phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
+    phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
     cryst_core = rheo.cryst_avrami(t_n, te, I)
     R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
     dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
@@ -612,336 +393,6 @@ def step_KT2000_FD2_OHA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
     B_n += dB
     #
     return h, te, abs_Usurf, B_n, dt, dt_type, substeps
-
-
-
-def step_KT2000_FD2_OSA(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
-    # --------------------------------------------------------------------------
-    # methods:
-    # physics_quality   = 'operations' (O)
-    # h_update          = 'parabolic_substeps' (S)
-    # te_update         = 'advection' (A)
-    # --------------------------------------------------------------------------
-    # Compute all fields here:
-    phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
-    cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
-    dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
-    #
-    # --------------------------------------------------------------------------
-    # Freezout:
-    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
-    #
-    # --------------------------------------------------------------------------
-    # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
-    K_n = ne.evaluate('R_n * h**3') # much faster cubing
-    I_ij = I[2:-2,2:-2] # (rows-4, cols-4)
-    q_ij = q_n[I] # (n_active,)
-    #
-    R_ij = R_n[I] # (n_active,)
-    K_ij = K_n[I] # (n_active,)
-    B_ij = B_n[I] # (n_active,)
-    R_RLUD = np.array([R_n[2:-2,3:-1][I_ij], R_n[2:-2,1:-3][I_ij], R_n[1:-3,2:-2][I_ij], R_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    K_RLUD = np.array([K_n[2:-2,3:-1][I_ij], K_n[2:-2,1:-3][I_ij], K_n[1:-3,2:-2][I_ij], K_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    B_RLUD = np.array([B_n[2:-2,3:-1][I_ij], B_n[2:-2,1:-3][I_ij], B_n[1:-3,2:-2][I_ij], B_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    #
-    # --------------------------------------------------------------------------
-    # Edge Variables
-    R = 0.5 * (R_ij[None,:] + R_RLUD) # (4, n_active) # order: E, W, N, S
-    K = 0.5 * (K_ij[None,:] + K_RLUD) # (4, n_active) # order: E, W, N, S
-    dxy = np.array([p.dx, -p.dx, p.dy, -p.dy]) # (4,) # order: E, W, N, S
-    neg_grad_B = (B_ij[None,:] - B_RLUD) / dxy[:,None] # (4, n_active) # order: E, W, N, S
-    neg_R_grad_B = R * neg_grad_B
-    #
-    # --------------------------------------------------------------------------
-    # MUSCL reconstruction of edge states (piecewise linear)
-    all_h_states = np.array(muscl_linear(h, I, flux_lim_van_Leer)) # (8, n_active)
-    h_RRUU = all_h_states[0::2] # (4, n_active) RU: (EWNS, n_active)
-    h_LLDD = all_h_states[1::2] # (4, n_active) LD: (EWNS, n_active)
-    h2_RRUU = h_RRUU**2 # (4, n_active) RU: (EWNS, n_active)
-    h2_LLDD = h_LLDD**2 # (4, n_active) LD: (EWNS, n_active)
-    #
-    # --------------------------------------------------------------------------
-    # CFL related speeds
-    # dF/du = 3 * R * -grad(B) * h**2 == 3 * Actual Advection Speed
-    max_h2 = np.maximum(h2_RRUU, h2_LLDD) # (4, n_active) # order: E, W, N, S
-    a = abs(neg_R_grad_B) * 3*max_h2 # (4, n_active) # order: E, W, N, S
-    amax = np.max(a, axis = -1) # (4,) # order: E, W, N, S
-    x_speed_max = amax[0:2].max()
-    y_speed_max = amax[2:4].max()
-    #
-    # --------------------------------------------------------------------------
-    # Fluxes from Kurganov and Tadmor (2000)
-    all_convective_fluxes_h = 0.5 * (
-        (neg_R_grad_B*h2_RRUU - a)*h_RRUU +
-        (neg_R_grad_B*h2_LLDD + a)*h_LLDD
-        ) # (4, n_active)
-    #
-    # --------------------------------------------------------------------------
-    # Timestep
-    # set dt: either hyperbolic, initial, or max_val
-    dt, dt_type = dt_hyperbolic(x_speed_max, y_speed_max, h.max(), q_ij.max())
-    dt_ftcs = p.safety_factor * p.lambda_max / ((K.max() + p.pos_eps) * (1/p.dx**2 + 1/p.dy**2))
-    #
-    # --------------------------------------------------------------------------
-    # Iterate on substeps for diffusion here (using FTCS):
-    # all_convective_fluxes, K, q stay constant while Diffusion is carried forward
-    h_sub = h.copy()
-    substeps = 0
-    tau_sub = 0 # measures progress through dt interval: t_n <= t_n + tau_sub <= t_n + dt
-    while tau_sub < dt:
-        # ----------------------------------------------------------------------
-        # diffusion-limited, convection-limited, or time-remaining in dt
-        dt_sub = min(dt_ftcs, dt, dt-tau_sub)
-        #
-        # ----------------------------------------------------------------------
-        # Compute grad(h), total fluxes
-        h_ij = h_sub[I] # (n_active,)
-        h_RLUD = np.array([h_sub[2:-2,3:-1][I_ij], h_sub[2:-2,1:-3][I_ij], h_sub[1:-3,2:-2][I_ij], h_sub[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-        grad_h = (h_RLUD - h_ij[None,:]) / dxy[:,None] # (4, n_active) # order: E, W, N, S
-        all_fluxes_h = all_convective_fluxes_h - K*grad_h # (4, n_active) # order: E, W, N, S
-        #
-        # ----------------------------------------------------------------------
-        # Logic to stop uphill fluxes
-        neg_grad_S = neg_grad_B - grad_h # order: E, W, N, S
-        is_uphill_flow = np.sign(neg_grad_S * all_fluxes_h) == -1 # (4, n_active) # order: E, W, N, S
-        all_fluxes_h[is_uphill_flow] = 0 # (4, n_active) # order: E, W, N, S
-        #
-        # ----------------------------------------------------------------------
-        # Forward Euler Update
-        h_sub[I] += dt_sub * (q_ij - np.sum(all_fluxes_h/dxy[:,None], axis = 0))
-        tau_sub += dt_sub
-        substeps += 1
-        #
-        # ----------------------------------------------------------------------
-    # h_sub is now approximately h_{n+1}
-    h = h_sub.copy()
-    #
-    # --------------------------------------------------------------------------
-    # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_advection(te, Rsurf_n, neg_grad_S, h2_RRUU, h2_LLDD, max_h2, q_n, dxy, t_n, dt, is_uphill_flow, I, I_ij)
-    #
-    # --------------------------------------------------------------------------
-    # Update Base
-    dB = np.minimum(dt * dBdt, h) # at most can freeze h
-    h -= dB
-    B_n += dB
-    #
-    # --------------------------------------------------------------------------
-    return h, te, abs_Usurf, B_n, dt, dt_type, substeps
-
-
-
-def step_KT2000_FD2_OHI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
-    # --------------------------------------------------------------------------
-    # methods:
-    # physics_quality   = 'operations' (O)
-    # h_update          = 'hyperbolic_approx' (H)
-    # te_update         = 'from_inundation' (I)
-    # --------------------------------------------------------------------------
-    # Compute all fields here:
-    phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
-    cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
-    dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
-    #
-    # --------------------------------------------------------------------------
-    # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_inundation(te, Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I) # Implicit Globals: Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
-    #
-    # --------------------------------------------------------------------------
-    # Freezout:
-    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
-    #
-    # --------------------------------------------------------------------------
-    # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
-    S_n = B_n + h
-    K_n = ne.evaluate('R_n * h**3') # much faster cubing
-    I_ij = I[2:-2,2:-2] # (rows-4, cols-4)
-    q_ij = q_n[I] # (n_active,)
-    #
-    R_ij = R_n[I] # (n_active,)
-    S_ij = S_n[I] # (n_active,)
-    R_RLUD = np.array([R_n[2:-2,3:-1][I_ij], R_n[2:-2,1:-3][I_ij], R_n[1:-3,2:-2][I_ij], R_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    S_RLUD = np.array([S_n[2:-2,3:-1][I_ij], S_n[2:-2,1:-3][I_ij], S_n[1:-3,2:-2][I_ij], S_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    # --------------------------------------------------------------------------
-    # Edge Variables
-    R = 0.5 * (R_ij[None,:] + R_RLUD) # (4, n_active) # order: E, W, N, S
-    dxy = np.array([p.dx, -p.dx, p.dy, -p.dy]) # (4,) # order: E, W, N, S
-    neg_grad_S = (S_ij[None,:] - S_RLUD) / dxy[:,None] # (4, n_active) # order: E, W, N, S
-    neg_R_grad_S = R * neg_grad_S
-    #
-    # --------------------------------------------------------------------------
-    # MUSCL reconstruction of edge states (piecewise linear)
-    all_h_states = np.array(muscl_linear(h, I, flux_lim_van_Leer)) # (8, n_active)
-    h_RRUU = all_h_states[0::2] # (4, n_active) RU: (EWNS, n_active)
-    h_LLDD = all_h_states[1::2] # (4, n_active) LD: (EWNS, n_active)
-    h2_RRUU = h_RRUU**2 # (4, n_active) RU: (EWNS, n_active)
-    h2_LLDD = h_LLDD**2 # (4, n_active) LD: (EWNS, n_active)
-    #
-    # --------------------------------------------------------------------------
-    # CFL related speeds
-    # dF/du = 3 * R * -grad(S) * h**2 == 3 * Actual Advection Speed
-    a = abs(neg_R_grad_S) * 3*np.maximum(h2_RRUU, h2_LLDD) # (4, n_active) # order: E, W, N, S
-    amax = np.max(a, axis = -1) # (4,) # order: E, W, N, S
-    x_speed_max = amax[0:2].max()
-    y_speed_max = amax[2:4].max()
-    #
-    # --------------------------------------------------------------------------
-    # Timestep
-    # set dt: either hyperbolic, initial, or max_val
-    dt, dt_type = dt_muscl(x_speed_max, y_speed_max, K_n.max(), h.max(), q_ij.max())
-    #
-    # --------------------------------------------------------------------------
-    # Fluxes from Kurganov and Tadmor (2000)
-    all_convective_fluxes = 0.5 * (
-        (neg_R_grad_S*h2_RRUU - a)*h_RRUU +
-        (neg_R_grad_S*h2_LLDD + a)*h_LLDD
-        ) # (4, n_active) # convective fluxes
-    #
-    # ----------------------------------------------------------------------
-    # Logic to stop uphill fluxes
-    is_uphill_flow = np.sign(neg_grad_S * all_convective_fluxes) == -1 # (4, n_active) # order: E, W, N, S
-    all_convective_fluxes[is_uphill_flow] = 0 # (4, n_active) # order: E, W, N, S
-    #
-    # ----------------------------------------------------------------------
-    # Forward Euler Update
-    h[I] += dt * (q_ij - np.sum(all_convective_fluxes/dxy[:,None], axis = 0))
-    substeps = 1
-    # --------------------------------------------------------------------------
-    # Update Base
-    dB = np.minimum(dt * dBdt, h) # at most can freeze h
-    h -= dB
-    B_n += dB
-    #
-    return h, te, abs_Usurf, B_n, dt, dt_type, substeps
-
-
-
-def step_KT2000_FD2_OSI(h, B_n, te, ti, q_n, abs_U_s, t_n, I):
-    # --------------------------------------------------------------------------
-    # methods:
-    # physics_quality   = 'operations' (O)
-    # h_update          = 'parabolic_substeps' (S)
-    # te_update         = 'from_inundation' (I)
-    # --------------------------------------------------------------------------
-    # Compute all fields here:
-    phi_S = therm.surface_BL_simple(t_n, te, h, p.core_temperature)
-    cryst_core = rheo.cryst_avrami(t_n, te, I)
-    R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(h, B_n, phi_S, cryst_core)
-    dBdt = rheo.dBdt(t_n, ti, h, p.core_temperature, abs_U_s, fluidity_n, q_n)
-    #
-    # --------------------------------------------------------------------------
-    # update t_erupted, get surface speed
-    abs_Usurf = update_te_from_inundation(te, Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I) # Implicit Globals: Rsurf_n, abs_grad_S_n, h, R_n, ti, t_n, dt, I
-    #
-    # --------------------------------------------------------------------------
-    # Freezout:
-    topo.freeze(h, B_n, dBdt, ti, phi_S, cryst_core, jeffreys_efficiency, t_n)
-    #
-    # --------------------------------------------------------------------------
-    # Active subsetting # Note: Q[I] == Q[2:-2,2:-2][I_ij]
-    K_n = ne.evaluate('R_n * h**3') # much faster cubing
-    I_ij = I[2:-2,2:-2] # (rows-4, cols-4)
-    q_ij = q_n[I] # (n_active,)
-    #
-    R_ij = R_n[I] # (n_active,)
-    K_ij = K_n[I] # (n_active,)
-    B_ij = B_n[I] # (n_active,)
-    R_RLUD = np.array([R_n[2:-2,3:-1][I_ij], R_n[2:-2,1:-3][I_ij], R_n[1:-3,2:-2][I_ij], R_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    K_RLUD = np.array([K_n[2:-2,3:-1][I_ij], K_n[2:-2,1:-3][I_ij], K_n[1:-3,2:-2][I_ij], K_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    B_RLUD = np.array([B_n[2:-2,3:-1][I_ij], B_n[2:-2,1:-3][I_ij], B_n[1:-3,2:-2][I_ij], B_n[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-    # --------------------------------------------------------------------------
-    # Edge Variables
-    R = 0.5 * (R_ij[None,:] + R_RLUD) # (4, n_active) # order: E, W, N, S
-    K = 0.5 * (K_ij[None,:] + K_RLUD) # (4, n_active) # order: E, W, N, S
-    dxy = np.array([p.dx, -p.dx, p.dy, -p.dy]) # (4,) # order: E, W, N, S
-    neg_grad_B = (B_ij[None,:] - B_RLUD) / dxy[:,None] # (4, n_active) # order: E, W, N, S
-    neg_R_grad_B = R * neg_grad_B
-    #
-    # --------------------------------------------------------------------------
-    # MUSCL reconstruction of edge states (piecewise linear)
-    all_h_states = np.array(muscl_linear(h, I, flux_lim_van_Leer)) # (8, n_active)
-    h_RRUU = all_h_states[0::2] # (4, n_active) RU: (EWNS, n_active)
-    h_LLDD = all_h_states[1::2] # (4, n_active) LD: (EWNS, n_active)
-    h2_RRUU = h_RRUU**2 # (4, n_active) RU: (EWNS, n_active)
-    h2_LLDD = h_LLDD**2 # (4, n_active) LD: (EWNS, n_active)
-    #
-    # --------------------------------------------------------------------------
-    # CFL related speeds
-    # dF/du = 3 * R * -grad(B) * h**2 == 3 * Actual Advection Speed
-    a = abs(neg_R_grad_B) * 3*np.maximum(h2_RRUU, h2_LLDD) # (4, n_active) # order: E, W, N, S
-    amax = np.max(a, axis = -1) # (4,) # order: E, W, N, S
-    x_speed_max = amax[0:2].max()
-    y_speed_max = amax[2:4].max()
-    #
-    # --------------------------------------------------------------------------
-    # Fluxes from Kurganov and Tadmor (2000)
-    all_convective_fluxes = 0.5 * (
-        (neg_R_grad_B*h2_RRUU - a)*h_RRUU +
-        (neg_R_grad_B*h2_LLDD + a)*h_LLDD
-        ) # (4, n_active) # convective fluxes
-    #
-    # --------------------------------------------------------------------------
-    # Timestep
-    # set dt: either hyperbolic, initial, or max_val
-    dt, dt_type = dt_hyperbolic(x_speed_max, y_speed_max, h.max(), q_ij.max())
-    dt_ftcs = p.safety_factor * p.lambda_max / ((K.max() + p.pos_eps) * (1/p.dx**2 + 1/p.dy**2))
-    #
-    # --------------------------------------------------------------------------
-    # Iterate on substeps for diffusion here (using FTCS):
-    # all_convective_fluxes, K, q stay constant while Diffusion is carried forward
-    h_sub = h.copy()
-    substeps = 0
-    tau_sub = 0 # measures progress through dt interval: t_n <= t_n + tau_sub <= t_n + dt
-    while tau_sub < dt:
-        # ----------------------------------------------------------------------
-        # diffusion-limited, convection-limited, or time-remaining in dt
-        dt_sub = min(dt_ftcs, dt, dt-tau_sub)
-        #
-        # ----------------------------------------------------------------------
-        # Compute grad(h), total fluxes
-        h_ij = h_sub[I] # (n_active,)
-        h_RLUD = np.array([h_sub[2:-2,3:-1][I_ij], h_sub[2:-2,1:-3][I_ij], h_sub[1:-3,2:-2][I_ij], h_sub[3:-1,2:-2][I_ij]]) # (4, n_active) # order: R, W, N, S
-        grad_h = (h_RLUD - h_ij[None,:]) / dxy[:,None] # (4, n_active) # order: E, W, N, S
-        all_fluxes = all_convective_fluxes - K*grad_h # (4, n_active) # order: E, W, N, S
-        #
-        # ----------------------------------------------------------------------
-        # Logic to stop uphill fluxes
-        neg_grad_S = neg_grad_B - grad_h # order: E, W, N, S
-        is_uphill_flow = np.sign(neg_grad_S * all_fluxes) == -1 # (4, n_active) # order: E, W, N, S
-        all_fluxes[is_uphill_flow] = 0 # (4, n_active) # order: E, W, N, S
-        #
-        # ----------------------------------------------------------------------
-        # Forward Euler Update
-        h_sub[I] += dt_sub * (q_ij - np.sum(all_fluxes/dxy[:,None], axis = 0))
-        tau_sub += dt_sub
-        substeps += 1
-        #
-        # ----------------------------------------------------------------------
-    # h_sub is now approximately h_{n+1}
-    h = h_sub.copy()
-    # alternative: instead of FTCS - use an implicit method and Jacobi's methods
-    # difficulty: need to preserve logic to stop uphill fluxes
-    #
-    # --------------------------------------------------------------------------
-    # Update t_erupted
-    speed_ratio_ij = local_mean((R_n + p.pos_eps) / (Rsurf_n + p.pos_eps))[I]
-    te_ij_update = t_n -  speed_ratio_ij * ti[I] # assume surface travel time is ~ 2/3 of bulk current
-    te_ij_update[q_ij > 0] = t_n + dt # ensure source conditon  # (rows, cols)
-    te[I] = te_ij_update
-    #
-    # --------------------------------------------------------------------------
-    # Update Base
-    dB = np.minimum(dt * dBdt, h) # at most can freeze h
-    h -= dB
-    B_n += dB
-    #
-    return h, te, abs_Usurf, B_n, dt, dt_type, substeps
-
-
-
-
 
 ################################################################################
 #

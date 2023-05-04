@@ -1,1 +1,4 @@
 example_vents/
+__pycache__
+LICENSE.txt
+README.md

@@ -5,11 +5,6 @@ class params():
     stefan_boltzmann = 5.67e-8 # W m-2 K-4
     # Gravity
     g = 9.81 # m s-2
-    # Water
-    water_density = 1000 # kg m-3
-    water_specific_heat = 4190 # J kg-1 K-1
-    water_latent_heat_vap = 2.26e6 # J kg-1
-    water_boiling_temperature = 373 # K
     #
     pos_eps = 1e-16
     lambda_max = 0.5

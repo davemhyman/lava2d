@@ -3,13 +3,8 @@ import scipy.interpolate as sci
 import pandas as pd
 import glob
 import os
-import numexpr as ne
 
 from globals import params as p
-from globals import grids as g
-import thermal as therm
-import topo
-import rheo
 
 ################################################################################
 #
@@ -28,8 +23,6 @@ def spatial_density(x,y,x0,y0,x1,y1,W):
     sin_th = np.sin(theta)
     xn = x - 0.5*(x1+x0)
     yn = y - 0.5*(y1+y0)
-    #u = ne.evaluate('xn*cos_th + yn*sin_th')
-    #v = ne.evaluate('-xn*sin_th + yn*cos_th')
     u = xn*cos_th + yn*sin_th
     v = -xn*sin_th + yn*cos_th
     #
@@ -37,7 +30,6 @@ def spatial_density(x,y,x0,y0,x1,y1,W):
     L = max(L, 1.01*min(p.dx,p.dy))
     W = max(W, 1.01*min(p.dx,p.dy))
     #
-    #f = 0.75/(L*W) * (np.sign(u+0.5*L) - np.sign(u-0.5*L)) * np.maximum(1-(v/(0.5*W))**2,0)
     f = (np.sign(u+0.5*L) - np.sign(u-0.5*L)) * np.maximum(1-(v/(0.5*W))**2, 0)
     f_tot = np.sum(f)
     if f_tot == 0:
@@ -54,6 +46,7 @@ def read_source_data():
     for n in range(len(files)):
         # open each vent file:
         db = pd.read_csv(files[n], header = 0, delimiter = '\t')
+        db['discharge'] = db['discharge'] / (1.0-p.porosity) # convert from DRE to Bulk Effusion Rate
         db.dropna(inplace = True)
         data = db.to_numpy().T
         times = data[0]
@@ -62,44 +55,6 @@ def read_source_data():
         Pn = sci.interp1d(times, params, kind = 'linear', bounds_error = False, fill_value = (params[:,0], params[:,-1]))
         #
         p.vent_param_splines.append(Pn)
-
-'''
-include in read_source_data:
-
-# static vent area grids
-# could make a global grid g.t_on with vent area cells having the value of time when they turn on
-# similar grid for when they shut off (g.t_off)
-# (g.t_on <= t_n) and (t_n <= g.t_off) demarcates vent areas where discharge is ongoing
-# g.discharge_ongoing = np.logical_and(g.t_on <= t_n, g.t_off >= t_n)
-# I = np.logical_or(g.h_n > 0, g.discharge_ongoing)
-
-'''
-
-
-
-'''
-def source_term(x,y,t):
-    I = np.isfinite(x)
-    # at some time t:
-    x_active,y_active = x[I], y[I] # (n_active,)
-    #
-    n_vents = len(p.vent_param_splines)
-    q = np.zeros(x_active.shape) # (n_active,)
-    Q_tot = 0
-    for n in range(n_vents):
-        x0,y0,x1,y1,W,Qn = p.vent_param_splines[n](t) # scalars
-        fn = spatial_density(x_active,y_active,x0,y0,x1,y1,W) # (n_active,)
-        q += Qn * fn # (n_active,)
-        Q_tot += Qn
-    # Need to correct to ensure np.sum(q)*p.dx*p.dy = Q_tot
-    # as a safety from overlaps
-    src = np.zeros(x.shape)
-    src[I] = q #Q_tot * q / (np.sum(q)*p.dx*p.dy + p.pos_eps) # (rows, cols)
-    return src
-
-'''
-
-
 
 
 

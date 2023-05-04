@@ -1,7 +1,6 @@
 import numpy as np
-import numexpr as ne
-import thermal as therm
 from globals import params as p
+import thermal as therm
 ################################################################################
 # Rheological Model
 ################################################################################
@@ -12,31 +11,17 @@ from globals import params as p
 # must specify: viscosity(T), d_log_visc_dT(T), T_stiffened(T_core)
 
 def melt_viscosity(T):
-    # FLOWGO; matching VFT models <--> Dragoni (1989)
-    #a = 0.04 # K-1
-    #return  p.viscosity_vent * np.exp(a*(p.T_vent - T))
-    #gv_contrast = np.log(1e12 / p.viscosity_vent)
-    #dT = gv_contrast * (p.T_vent - p.T_glass) / (gv_contrast - a * (p.T_vent - p.T_glass))
-    #return p.viscosity_vent * np.exp(-a*dT*(1 - dT/np.maximum(T - p.T_vent + dT, 0.1*dT)))
-    # Lev et al 2012: visc(T) = 10**(-5.94 + 5500. / (T - 610.))
+    # Dragoni (1989)
     a = d_log_visc_dT(p.core_temperature)
     return p.viscosity_vent * np.exp(a*(p.T_vent - T))
 
 def d_log_visc_dT(T):
-    # a =  -d(log(melt_visc))/dT
-    # Lev et al 2012: visc(T) = 10**(-5.94 + 5500. / (T - 610.))
-    # a_Lev = np.log(10) * 5500. * (T - 610.)**-2
-    # a_lev_1050C = 0.0249
     # a_Dragoni = .04
-    # return np.log(10) * 5500. * (T - 610.)**-2
     return .04
 
-
 def T_stiffened(T_core):
-    # Temp at which visc = 2*visc_core
     # assume all stiffening happens due to cooling of melt phase (no excess xtals)
     # ie: Temp at which:  visc_melt_stiff = 2*visc_melt_core
-    # T_stiffened_Lev = 610. + 1 / (np.log10(2) / 5500. + 1 / (T_core - 610.))
     return T_core - np.log(2) / d_log_visc_dT(T_core)
 
 
@@ -46,24 +31,23 @@ def viscosity(T, phi):
     return np.maximum(1 - phi/p.phi_max, 1e-3)**-2.5 * melt_viscosity(T)
 
 def fluidity(T, phi):
+    # reciprocal viscosity
     return np.maximum(1 - phi/p.phi_max, 0)**2.5 / melt_viscosity(T)
 
 def cryst_avrami(t, te, I):
+    # params, could be precalculated
     n = 4
-    t_active = 1.0 * (t - te[I]) # (n_active,) # core arrival in terms of surface transit time
-    C_vent = np.log(1. / (1. - p.cryst_vent))**(1./n)
-    lam = (np.exp(n-1)/(n*(n-1)**(n-1)))**(1./n) * p.max_cryst_rate
+    k = (p.max_cryst_rate/(n*p.phi_inf))**n * ((n-1.)/(n*np.exp(1)))**(1.-n)
+    t_init = (np.log(p.phi_inf/(p.phi_inf - p.cryst_vent)) / k)**(1./n)
     #
+    surface_age = t - te[I]
+    t_bulk = 1.0 * surface_age # (n_active,) # core arrival in terms of surface transit time
     phi = np.zeros(te.shape, dtype = te.dtype) # (rows, cols)
-    phi[I] = 1 - np.exp(-(C_vent + lam*t_active)**n)
+    phi[I] = p.phi_inf * (1 - np.exp(-k*(t_init + t_bulk)**n))
     return phi
 
 def yield_stress(phi):
-    # Mueller et al. (2010); Chevrel et al. (2013); FLOWGO
-    #tau_star = 0.087 # depends on aspect ratio, technically: value of yield stress at phi = 0.293*phi_max
-    #return tau_star * (np.maximum(1 - phi/p.phi_max, 1e-3)**-2 - 1)
     return 6500 * phi**2.85
-    #return ne.evaluate('6500 * phi**2.85')
 
 def slope_SAN(S, I):
     # Calculate abs(grad(S)): Steepest Adjacent Neighbor (SAN)
@@ -71,38 +55,16 @@ def slope_SAN(S, I):
     #
     I_ij = I[1:-1,1:-1]
     S_ij = S[1:-1,1:-1][I_ij] # (n_active,)
-    S_E = S[1:-1,2:][I_ij] # (n_active,)
-    S_W = S[1:-1,0:-2][I_ij] # (n_active,)
-    S_N = S[0:-2,1:-1][I_ij] # (n_active,)
-    S_S = S[2:,1:-1][I_ij] # (n_active,)
-    #S_NE = S[0:-2,2:][I_ij] # (n_active,)
-    #S_SW = S[2:,0:-2][I_ij] # (n_active,)
-    #S_NW = S[0:-2,0:-2][I_ij] # (n_active,)
-    #S_SE = S[2:,2:][I_ij] # (n_active,)
     #
-    dS_E = abs(S_E - S_ij) # (n_active,)
-    dS_W = abs(S_ij - S_W) # (n_active,)
-    dS_N = abs(S_N - S_ij) # (n_active,)
-    dS_S = abs(S_ij - S_S) # (n_active,)
-    #dS_NE = abs(S_NE - S_ij) # (n_active,)
-    #dS_SW = abs(S_ij - S_SW) # (n_active,)
-    #dS_NW = abs(S_NW - S_ij) # (n_active,)
-    #dS_SE = abs(S_ij - S_SE) # (n_active,)
+    dS_E = abs(S_ij - S[1:-1,2:][I_ij]) # (n_active,)
+    dS_W = abs(S_ij - S[1:-1,0:-2][I_ij]) # (n_active,)
+    dS_N = abs(S_ij - S[0:-2,1:-1][I_ij]) # (n_active,)
+    dS_S = abs(S_ij - S[2:,1:-1][I_ij]) # (n_active,)
     #
-    #diff_NE_SW = ne.evaluate('where(dS_NE > dS_SW, dS_NE, dS_SW)')
-    #diff_NW_SE = ne.evaluate('where(dS_NW > dS_SE, dS_NW, dS_SE)')
-    #slope_max_diag = ne.evaluate('where(diff_NE_SW > diff_NW_SE, diff_NE_SW, diff_NW_SE)') / np.sqrt(p.dx**2 + p.dy**2)
-    #slope_E_W = ne.evaluate('where(dS_E > dS_W, dS_E, dS_W)') / p.dx
-    #slope_N_S = ne.evaluate('where(dS_N > dS_S, dS_N, dS_S)') / p.dy
-    #slope_max_card = ne.evaluate('where(slope_E_W > slope_N_S, slope_E_W, slope_N_S)')
-    #
-    #slope_max_diag = np.maximum.reduce([dS_NE, dS_SW, dS_NW, dS_SE]) / np.sqrt(p.dx**2 + p.dy**2) # (n_active,)
     slope_max_EW = np.maximum(dS_E, dS_W) / p.dx # (n_active,)
     slope_max_NS = np.maximum(dS_N, dS_S) / p.dy # (n_active,)
     slope_max = np.sqrt(slope_max_EW**2 + slope_max_NS**2)
     #
-    #return ne.evaluate('where(slope_max_card > slope_max_diag, slope_max_card, slope_max_diag)')
-    #return np.maximum.reduce([slope_max_EW, slope_max_NS, slope_max_diag])
     return slope_max
 
 def rheo_factor_bl_S_all_outputs(h, B, phi_S, cryst_core):
@@ -170,7 +132,7 @@ def dBdt(t, ti, h, T_core, U_s, fluidity_core, q_n):
     #
     out = np.zeros(h.shape)
     #
-    valid = h > p.tiny_flow
+    valid = np.logical_and(h > p.tiny_flow, ti < t)
     if np.any(valid):
         #
         h_v = h[valid]
