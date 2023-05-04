@@ -1,9 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.pyplot import colorbar as cbar
-import matplotlib.colors as c
 import time as clock
-from geotiff import GeoTiff
 import os
 from netCDF4 import Dataset
 
@@ -123,26 +119,27 @@ def set_source(
 #
 #-------------------------------------------------------------------------------
 def set_vent_props(
-    temperature_vent_C = 1140, # deg C
-    viscosity_vent = 100, # Pa s
+    temperature_vent_C = 1150, # deg C
+    viscosity_melt_vent = 100, # Pa s
     cryst_vent = 0, # erupted crystal fraction
     ):
     #
     p.T_vent = temperature_vent_C + 273
-    p.viscosity_vent = viscosity_vent
+    p.viscosity_vent = viscosity_melt_vent
     p.cryst_vent = cryst_vent
 #
 #-------------------------------------------------------------------------------
 def set_lava_props(
     liquid_density = 2700, # kg m-3
-    porosity = 0.4,
+    porosity = 0.0,
     lava_conductivity = None, # W m-1 K-1
     lava_diffusivity = 5.5e-7, # m2 s-1
     lava_specific_heat = 1000, # J kg-1 K-1
     lava_emissivity = 0.95,
     ):
     #
-    p.lava_density = liquid_density * (1 - porosity)
+    p.porosity = porosity
+    p.lava_density = liquid_density * (1 - p.porosity)
     p.lava_specific_heat = lava_specific_heat
     if lava_conductivity == None:
         p.lava_diffusivity = lava_diffusivity
@@ -155,17 +152,17 @@ def set_lava_props(
 #
 #-------------------------------------------------------------------------------
 def set_rheo(
-    phi_max = 0.67, # max crystal packing fraction
+    phi_max = 0.6, # max crystal packing fraction
+    phi_inf = 1.0 , # crystal fraction at equilibrium (as t--> inf)
     max_cryst_rate = 0, # s-1
     yield_strength_crust = 0, # Pa
-    glass_temperature = None, # K
     T_core_T_vent_equal = True
     ):
     #
     p.phi_max = phi_max
+    p.phi_inf = phi_inf
     p.max_cryst_rate = max_cryst_rate
     p.yield_strength_crust = yield_strength_crust
-    p.glass_temperature = glass_temperature
     if T_core_T_vent_equal:
         p.core_temperature = p.T_vent
     else:
@@ -179,20 +176,17 @@ def set_rheo(
 #
 #-------------------------------------------------------------------------------
 def set_ambient(
+    ground_temperature = 300, # K
     atm_temperature = 300, # K
-    h_conv = 10, # m s-1
-    rainfall = 0, # m s-1
-    ground_temperature = 300 # K
+    h_conv = 10 # m s-1
     ):
     #
+    p.ground_temperature = ground_temperature
     p.atm_temperature = atm_temperature
     p.h_conv = h_conv
-    p.rainfall = rainfall
-    p.ground_temperature = ground_temperature
 #
 #-------------------------------------------------------------------------------
 def set_numerics(
-    method = 'OHA',
     efficiency_min = 0,
     efficiency_max = 10000,
     cfl_max = 0.5,
@@ -201,7 +195,6 @@ def set_numerics(
     tiny_flow = 0.1
     ):
     #
-    p.method = method
     p.efficiency_min = efficiency_min
     p.efficiency_max = efficiency_max
     p.cfl_max = cfl_max
@@ -212,9 +205,13 @@ def set_numerics(
 #-------------------------------------------------------------------------------
 def set_runtime(
     max_iter = None,
-    max_time_hr = 0 # s
+    max_time_hr = 0,
+    out_times = [0.0],
+    run_to_ocean = False
     ):
     #
+    p.out_times = np.array(out_times)*3600
+    p.run_to_ocean = run_to_ocean
     time_limited = max_time_hr != None
     iter_limited = max_iter != None
     if not iter_limited and not time_limited:
@@ -231,24 +228,119 @@ def set_runtime(
         p.max_iter = np.inf
 #
 #-------------------------------------------------------------------------------
-def run():
+def set_output(
+    path_out = ''
+    ):
+    #
+    # if does not exist, make it
+    path_out = os.path.join(path_out, '')
+    os.makedirs(path_out, exist_ok = True)
+    #
+    p.path_out = path_out
+#
+#-------------------------------------------------------------------------------
+def set_init(
+    init_type = None,  # 'prior_model' or None currently supported
+    init_file = None
+    ):
+    #
+    p.init_type = init_type
+    p.init_file = init_file
+#
+#-------------------------------------------------------------------------------
+def initialize(init_type = None, file = None):
+    #
+    if init_type == 'prior_model':
+        #-----------------------------------------------------------------------
+        # initialize model from previous model run
+        f = Dataset(file, 'r')
+        data = f['DATA']
+        t_n = f['METADATA']['model_duration'][:][0]
+        #
+        g.x = data['x'][:]
+        g.y = data['y'][:]
+        g.lon = data['lon'][:]
+        g.lat = data['lat'][:]
+        g.B0 = data['topo_init'][:]
+        #
+        phys = data['PHYSICS']
+        g.h_n = phys['lava_thickness_dyn'][:]
+        g.B_n = g.B0 + phys['basal_change'][:]
+        g.t_inundation = t_n - phys['time_since_inundation'][:]
+        g.t_erupted = t_n - phys['time_since_erupted'][:]
+        #
+        vol_erupted = np.sum(g.h_n) * p.dx * p.dy
+        #
+        par = data['PARAMS']
+        p.T_vent = par['vent_temperature'][:][0]
+        p.viscosity_vent = par['vent_viscosity'][:][0]
+        p.cryst_vent = par['cryst_vent'][:][0]
+        p.lava_density = par['lava_density'][:][0]
+        p.lava_specific_heat = par['lava_specific_heat'][:][0]
+        p.lava_conductivity = par['lava_conductivity'][:][0]
+        p.lava_diffusivity = par['lava_diffusivity'][:][0]
+        p.lava_emissivity = par['lava_emissivity'][:][0]
+        p.phi_max = par['phi_max'][:][0]
+        p.phi_inf = par['phi_inf'][:][0]
+        p.max_cryst_rate = par['max_cryst_rate'][:][0]
+        p.yield_strength_crust = par['yield_strength_crust'][:][0]
+        p.core_temperature = par['core_temperature'][:][0]
+        p.atm_temperature = par['atm_temperature'][:][0]
+        p.h_conv = par['h_conv'][:][0]
+        p.ground_temperature = par['ground_temperature'][:][0]
+        p.efficiency_min = par['efficiency_min'][:][0]
+        p.efficiency_max = par['efficiency_max'][:][0]
+        p.cfl_max = par['cfl_max'][:][0]
+        p.dt_max = par['dt_max'][:][0]
+        p.fraction_to_freeze = par['fraction_to_freeze'][:][0]
+        p.tiny_flow = par['tiny_flow'][:][0]
+        p.dx = abs(np.diff(g.x).mean())
+        p.dy = abs(np.diff(g.y.T).mean())
+        #
+        I = np.isfinite(g.x)
+        phi_S = therm.surface_BL_simple(t_n, g.t_erupted, g.h_n, p.core_temperature)
+        cryst_core = rheo.cryst_avrami(t_n, g.t_erupted, I)
+        R_n, Rsurf_n, fluidity_n, abs_grad_S_n, jeffreys_efficiency = rheo.rheo_factor_bl_S_all_outputs(g.h_n, g.B_n, phi_S, cryst_core)
+        g.abs_Usurf = np.zeros(g.h_n.shape); abs_U_s[I] = Rsurf_n[I] * abs_grad_S_n[I] * g.h_n[I]**2
+        #
+    elif init_type == 'mapdata':
+        #-----------------------------------------------------------------------
+        # initialize model from some mapped data (import from netcdf)
+        print('~~~~~ ERROR MAP DATA INITIALIZATION NOT YET SUPPORTED ~~~~~')
+        #
+    elif init_type == None:
+        #-----------------------------------------------------------------------
+        # initialize model from bare ground, t = 0
+        # ICs: scalars
+        vol_erupted = 0.0
+        t_n = 0.0
+        #
+        # ICs: fields
+        g.t_inundation = np.zeros(g.B0.shape, dtype = g.B0.dtype) + t_n
+        g.t_erupted = np.zeros(g.B0.shape, dtype = g.B0.dtype)
+        g.abs_Usurf = np.zeros(g.B0.shape, dtype = g.B0.dtype)
+        g.B_n = g.B0.copy()
+        q_init_global = vents.source_term(g.x,g.y,0)
+        g.h_n = np.zeros(g.B0.shape, dtype = g.B0.dtype) + p.pos_eps*q_init_global
+        #
+    else:
+        #-----------------------------------------------------------------------
+        # ERROR
+        print("----- ERROR: unknown init_source type. Supported types: 'prior_model', None -----")
+        #
+    #
+    return vol_erupted, t_n
+#
+#-------------------------------------------------------------------------------
+def run(mapdata_file = None):
     print('| --- Initializing Model Domain --- |')
     #
-    # ICs: scalars
-    vol_erupted = 0.0
+    vol_erupted, t_n = initialize(init_type = p.init_type, file = p.init_file) # also creates domain grids
     n = 0
-    t_n = 0.0
     grid_level = 0
     dts = []
     step_times = []
     n_nodes = []
-    #
-    # ICs: fields
-    g.t_inundation = np.zeros(g.B0.shape, dtype = g.B0.dtype) + t_n
-    g.t_erupted = np.zeros(g.B0.shape, dtype = g.B0.dtype)
-    g.abs_Usurf = np.zeros(g.B0.shape, dtype = g.B0.dtype)
-    g.h_n = np.zeros(g.B0.shape, dtype = g.B0.dtype)
-    g.B_n = g.B0.copy()
     #
     buffer = 3 # theoretically, cfl limits buffer to 1
     bounds = m.subset_bounds(t_n, buffer_cells = 2*buffer)
@@ -262,9 +354,17 @@ def run():
         dt = 2 * p.tiny_flow / q_n[q_n>0].mean()
     #
     print('| --- Beginning Model Evolution --- |')
-    t0 = clock.time()
+    wall_t0 = clock.time()
     #
-    while (n < p.max_iter) and (t_n < p.max_time):
+    cond = (n < p.max_iter) and (t_n < p.max_time)
+    if p.run_to_ocean:
+        is_ocean = B_n <= p.dem_fill_level
+        has_lava = h_n > p.tiny_flow
+        flow_in_ocean = np.any(np.logical_and(is_ocean, has_lava))
+        cond = cond and ~flow_in_ocean
+        #
+    #
+    while cond:
         #
         t_step_start = clock.time()
         #
@@ -277,31 +377,30 @@ def run():
         # ----------------------------------------------------------------------
         # MUSCL step
         #
-        # specify separate methods:
-        # physics_quality: {'operations', 'research'} (O, R)
-        # h_update: {'full', 'parabolic_substeps', 'hyperbolic_approx'} (F, S, H)
-        # te_update: {'advection', 'from_inundation'} (A, I)
-        #
-        #
-        if p.method == 'RFA':
-            h_next, te_next, abs_U_s, B_next, dt, dt_type, substeps  = m.step_KT2000_FD2_RFA(h_n.copy(), B_n.copy(), te_n.copy(), ti_n.copy(), q_n, abs_U_s, t_n, I)
-        elif p.method == 'OSA':
-            h_next, te_next, abs_U_s, B_next, dt, dt_type, substeps  = m.step_KT2000_FD2_OSA(h_n.copy(), B_n.copy(), te_n.copy(), ti_n.copy(), q_n, abs_U_s, t_n, I)
-        elif p.method == 'OSI':
-            h_next, te_next, abs_U_s, B_next, dt, dt_type, substeps  = m.step_KT2000_FD2_OSI(h_n.copy(), B_n.copy(), te_n.copy(), ti_n.copy(), q_n, abs_U_s, t_n, I)
-        elif p.method == 'OHA':
+        try:
             h_next, te_next, abs_U_s, B_next, dt, dt_type, substeps  = m.step_KT2000_FD2_OHA(h_n.copy(), B_n.copy(), te_n.copy(), ti_n.copy(), q_n, abs_U_s, t_n, I)
-        elif p.method == 'OHI':
-            h_next, te_next, abs_U_s, B_next, dt, dt_type, substeps  = m.step_KT2000_FD2_OHI(h_n.copy(), B_n.copy(), te_n.copy(), ti_n.copy(), q_n, abs_U_s, t_n, I)
-        else:
-            print('| --- INVALID CHOICE OF METHOD --- |')
+            #
+            # ----------------------------------------------------------------------
+            # Update Scalars
+            vol_erupted += dt * np.sum(q_n) * p.dx * p.dy
+            t_n += dt
+            n+=1
+            #
+            cond = (n < p.max_iter) and (t_n < p.max_time)
+            if p.run_to_ocean:
+                is_ocean = B_next <= p.dem_fill_level
+                has_lava = h_next > p.tiny_flow
+                flow_in_ocean = np.any(np.logical_and(is_ocean, has_lava))
+                if flow_in_ocean:
+                    print('| --- "OCEAN" ENTRY HAS OCCURRED --- |')
+                    cond = False
+            #
+        except Exception as e:
+            print('| --- AN ERROR HAS OCCURRED: ENDING SIMULATION --- |')
+            print(e)
             h_next = h_n.copy(); B_next = B_n.copy(); te_next = te_n.copy()
-        #
-        # ----------------------------------------------------------------------
-        # Update Scalars
-        vol_erupted += dt * np.sum(q_n) * p.dx * p.dy
-        t_n += dt
-        n+=1
+            cond = False
+            #
         #
         # ----------------------------------------------------------------------
         # Re-embed grids:
@@ -322,8 +421,14 @@ def run():
         # every n%10 = 0 (ie: n = 10, 20, 30 ...)
         if n%10 == 0:
             print('|  Step (sub): {} ({})  |  dx: {} m  |  Grid: {} x {}  |  dt (type): {:.03f} s ({})  |  t: {:.02f} hr |'.format(n,substeps, p.dx, h_n.shape[0],h_n.shape[-1], dt, dt_type, t_n/3600.))
+            #
+        # if output time is reached
+        if np.any(p.out_times) and (t_n >= p.out_times[0]):
+            print('|  Step (sub): {} ({})  |  dx: {} m  |  Grid: {} x {}  |  dt (type): {:.03f} s ({})  |  t: {:.02f} hr |'.format(n,substeps, p.dx, h_n.shape[0],h_n.shape[-1], dt, dt_type, t_n/3600.))
+            intermediate_output(dts, step_times, n_nodes, dt, t_n, wall_t0, vol_erupted, out_time = p.out_times[0])
+            p.out_times = p.out_times[1:] # delete first element (moves next to the front)
+            #
         # Decide on Grid Transfer
-        #
         if (n >= 100) and (n%100) == 0:
             model_clock_last10 = np.sum(dts[-100:]) / np.sum(step_times[-100:])
             if model_clock_last10 < p.efficiency_min:
@@ -333,39 +438,47 @@ def run():
                 grid_level -= 1
                 interp_grids()
             # else: do nothing
-        #
         # ----------------------------------------------------------------------
     #
     # Simulation Ended
     dB = g.B_n - g.B0
     vol_error = np.sum(g.h_n + dB) * p.dx * p.dy / vol_erupted - 1
     #
-    t1 = clock.time()
-    model_clock_ratio = (t_n-0)/(t1-t0)
+    wall_t1 = clock.time()
+    model_clock_ratio = (t_n-0)/(wall_t1-wall_t0)
     print('|  Step (sub): {} ({})  |  dx: {} m  |  Grid: {} x {}  |  dt (type): {:.03f} s ({})  |  t: {:.02f} hr |'.format(n,substeps, p.dx, h_n.shape[0],h_n.shape[-1], dt, dt_type, t_n/3600.))
-    print('|  Clock Time: {:.03f} s |  Model-Clock Ratio : {:.03f}  |  Relative Volume Error : {:.03}  |'.format(t1 - t0, model_clock_ratio, vol_error))
+    print('|  Clock Time: {:.03f} s |  Model-Clock Ratio : {:.03f}  |  Relative Volume Error : {:.03}  |'.format(wall_t1 - wall_t0, model_clock_ratio, vol_error))
     #
     # Postprocessing:
     print('| --- Postprocessing --- |')
     post.make_all_physics_grids(t_n)
     # Write Output:
     print('| --- Writing Output --- |')
-    sim_metadata = [dts, step_times, n_nodes, model_clock_ratio, t1-t0, vol_error, dt, t_n]
+    sim_metadata = [dts, step_times, n_nodes, model_clock_ratio, wall_t1-wall_t0, vol_error, dt, t_n]
     write_nc(sim_metadata)
 #
 #-------------------------------------------------------------------------------
-def set_output(
-    path_out = ''
-    ):
+def intermediate_output(dts, step_times, n_nodes, dt, t_n, wall_t0, vol_erupted, out_time):
+    vol_error = np.sum(g.h_n + g.B_n - g.B0) * p.dx * p.dy / vol_erupted - 1
     #
-    # if does not exist, make it
-    path_out = os.path.join(path_out, '')
-    os.makedirs(path_out, exist_ok = True)
+    wall_elapsed = clock.time() - wall_t0
+    model_clock_ratio = t_n / wall_elapsed
+    print('|  Clock Time: {:.03f} s |  Model-Clock Ratio : {:.03f}  |  Relative Volume Error : {:.03}  |'.format(wall_elapsed, model_clock_ratio, vol_error))
     #
-    p.path_out = path_out
+    # Postprocessing:
+    print('| --- Postprocessing --- |')
+    post.make_all_physics_grids(t_n)
+    # Write Output:
+    print('| --- Writing Output --- |')
+    sim_metadata = [dts, step_times, n_nodes, model_clock_ratio, wall_elapsed, vol_error, dt, t_n]
+    fname = 'out.T+{:05.1f}hr.nc'.format(out_time/3600)
+    file = os.path.join(p.path_out, fname)
+    write_nc(sim_metadata, file)
 #
 #-------------------------------------------------------------------------------
-def write_nc(sim_metadata):
+def write_nc(sim_metadata, file=None):
+    if file == None:
+        file = os.path.join(p.path_out, 'out.nc')
     #
     dts, step_times, n_nodes, model_clock_ratio, wall_duration, vol_error, dt, t_n = sim_metadata
     dB = g.B_n - g.B0
@@ -375,7 +488,6 @@ def write_nc(sim_metadata):
     abs_grad_ti = rheo.slope_SAN(g.t_inundation, I)
     advance_rate[I] = 1. / (abs_grad_ti + p.pos_eps)
     #
-    file = os.path.join(p.path_out, 'out.nc')
     # --------------------------------------------------------------------------
     # Overwrite file
     #
@@ -427,12 +539,12 @@ def write_nc(sim_metadata):
     dset_lava_diffusivity       = g_data_par.createVariable('lava_diffusivity','f4', ('parameter',))
     dset_lava_emissivity        = g_data_par.createVariable('lava_emissivity','f4', ('parameter',))
     dset_phi_max                = g_data_par.createVariable('phi_max','f4', ('parameter',))
+    dset_phi_inf                = g_data_par.createVariable('phi_inf','f4', ('parameter',))
     dset_max_cryst_rate         = g_data_par.createVariable('max_cryst_rate','f4', ('parameter',))
     dset_yield_strength_crust   = g_data_par.createVariable('yield_strength_crust','f4', ('parameter',))
     dset_core_temperature       = g_data_par.createVariable('core_temperature','f4', ('parameter',))
     dset_atm_temperature        = g_data_par.createVariable('atm_temperature','f4', ('parameter',))
     dset_h_conv                 = g_data_par.createVariable('h_conv','f4', ('parameter',))
-    dset_rainfall               = g_data_par.createVariable('rainfall','f4', ('parameter',))
     dset_ground_temperature     = g_data_par.createVariable('ground_temperature','f4', ('parameter',))
     dset_efficiency_min         = g_data_par.createVariable('efficiency_min','f4', ('parameter',))
     dset_efficiency_max         = g_data_par.createVariable('efficiency_max','f4', ('parameter',))
@@ -476,13 +588,13 @@ def write_nc(sim_metadata):
     dset_lava_conductivity.description      = 'lumped thermal conductivity'
     dset_lava_diffusivity.description       = 'lumped thermal diffusivity'
     dset_lava_emissivity.description        = 'lava surface emissivity'
+    dset_phi_inf.description                = 'maximum equilibrium crystal fraction at T_core'
     dset_phi_max.description                = 'max packing crystal fraction'
     dset_max_cryst_rate.description         = 'largest crystallization rate'
     dset_yield_strength_crust.description   = 'yield strength of crustal material'
     dset_core_temperature.description       = 'flow core temperature (insulated)'
     dset_atm_temperature.description        = 'ambient temperature above flow'
     dset_h_conv.description                 = 'total heat transfer coefficient (natural and convective)'
-    dset_rainfall.description               = 'rainfall rate'
     dset_ground_temperature.description     = 'ambient temperature below flow'
     dset_efficiency_min.description         = 'min allowable model-clock ratio before coarser grid used'
     dset_efficiency_max.description         = 'max allowable model-clock ratio before finer grid used'
@@ -526,12 +638,12 @@ def write_nc(sim_metadata):
     dset_lava_diffusivity.units     = 'm2 s-1'
     dset_lava_emissivity.units      = '-'
     dset_phi_max.units              = '-'
+    dset_phi_inf.units              = '-'
     dset_max_cryst_rate.units       = 's-1'
     dset_yield_strength_crust.units = 'Pa'
     dset_core_temperature.units     = 'K'
     dset_atm_temperature.units      = 'K'
     dset_h_conv.units               = 'W m-2 K-1'
-    dset_rainfall.units             = 'm s-1'
     dset_ground_temperature.units   = 'K'
     dset_efficiency_min.units       = '-'
     dset_efficiency_max.units       = '-'
@@ -576,12 +688,12 @@ def write_nc(sim_metadata):
     dset_lava_diffusivity[0]       = np.float32(p.lava_diffusivity)
     dset_lava_emissivity[0]        = np.float32(p.lava_emissivity)
     dset_phi_max[0]                = np.float32(p.phi_max)
+    dset_phi_inf[0]                = np.float32(p.phi_inf)
     dset_max_cryst_rate[0]         = np.float32(p.max_cryst_rate)
     dset_yield_strength_crust[0]   = np.float32(p.yield_strength_crust)
     dset_core_temperature[0]       = np.float32(p.core_temperature)
     dset_atm_temperature[0]        = np.float32(p.atm_temperature)
     dset_h_conv[0]                 = np.float32(p.h_conv)
-    dset_rainfall[0]               = np.float32(p.rainfall)
     dset_ground_temperature[0]     = np.float32(p.ground_temperature)
     dset_efficiency_min[0]         = np.float32(p.efficiency_min)
     dset_efficiency_max[0]         = np.float32(p.efficiency_max)
