@@ -34,16 +34,16 @@ def fluidity(T, phi):
     # reciprocal viscosity
     return np.maximum(1 - phi/p.phi_max, 0)**2.5 / melt_viscosity(T)
 
+def set_cryst_params():
+    p.avrami_n = 4
+    p.avrami_a = 1./p.avrami_n * ((p.avrami_n - 1.) / (2.71828 * p.avrami_n))**((1. - p.avrami_n)/p.avrami_n)
+    p.avrami_k = p.avrami_a * p.max_cryst_rate / p.phi_inf
+    p.avrami_ci = np.log(p.phi_inf/(p.phi_inf - p.cryst_vent))**(1./p.avrami_n)
+
 def cryst_avrami(t, te, I):
-    # params, could be precalculated
-    n = 4
-    k = (p.max_cryst_rate/(n*p.phi_inf))**n * ((n-1.)/(n*np.exp(1)))**(1.-n)
-    t_init = (np.log(p.phi_inf/(p.phi_inf - p.cryst_vent)) / k)**(1./n)
-    #
-    surface_age = t - te[I]
-    t_bulk = 1.0 * surface_age # (n_active,) # core arrival in terms of surface transit time
+    tau = t - te[I] # (n_active,)
     phi = np.zeros(te.shape, dtype = te.dtype) # (rows, cols)
-    phi[I] = p.phi_inf * (1 - np.exp(-k*(t_init + t_bulk)**n))
+    phi[I] = p.phi_inf * (1 - np.exp(-(p.avrami_ci + p.avrami_k*tau)**p.avrami_n))
     return phi
 
 def yield_stress(phi):

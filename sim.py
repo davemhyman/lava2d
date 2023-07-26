@@ -162,6 +162,7 @@ def set_rheo(
     p.phi_max = phi_max
     p.phi_inf = phi_inf
     p.max_cryst_rate = max_cryst_rate
+    rheo.set_cryst_params()
     p.yield_strength_crust = yield_strength_crust
     if T_core_T_vent_equal:
         p.core_temperature = p.T_vent
