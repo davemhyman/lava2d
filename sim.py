@@ -116,6 +116,9 @@ def set_source(
     #
     p.path_to_vent_files = path_to_vent_files
     vents.read_source_data()
+
+def set_sources(vent_lists = []):
+    vents.read_list_data(vent_lists)
 #
 #-------------------------------------------------------------------------------
 def set_vent_props(
