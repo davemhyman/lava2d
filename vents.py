@@ -57,6 +57,21 @@ def read_source_data():
         p.vent_param_splines.append(Pn)
 
 
+def read_list_data(vents_list):
+    p.vent_param_splines = []
+    for vent in vents_list:
+        db = pd.DataFrame(vent, columns=['time', 'x0', 'y0', 'x1', 'y1', 'width', 'discharge'])
+        db['discharge'] = db['discharge'] / (1.0-p.porosity) # convert from DRE to Bulk Effusion Rate
+        db.dropna(inplace=True)
+        data = db.to_numpy().T
+        times = data[0]
+        params = data[1:]
+        # construct linear interpolant for each fissure parameter
+        Pn = sci.interp1d(times, params, kind='linear', bounds_error=False, fill_value=(params[:,0], params[:,-1]))
+        #
+        p.vent_param_splines.append(Pn)
+
+
 
 def source_term(x,y,t):
     src = np.zeros(x.shape)
