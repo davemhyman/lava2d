@@ -53,6 +53,14 @@ def interp_grids():
     g.t_inundation = m.interp(g.t_inundation)
 #
 #-------------------------------------------------------------------------------
+def begin():
+    #
+    with open('lava2d_ascii.txt','r') as f:
+        print(f.read())
+        #
+    #
+#
+#-------------------------------------------------------------------------------
 def set_topo(
     path_to_dem_file = '',
     Lon_SRC = 0,
@@ -337,6 +345,7 @@ def initialize(init_type = None, file = None):
 #
 #-------------------------------------------------------------------------------
 def run(mapdata_file = None):
+    #
     print('| --- Initializing Model Domain --- |')
     #
     vol_erupted, t_n = initialize(init_type = p.init_type, file = p.init_file) # also creates domain grids
