@@ -24,3 +24,5 @@ References:
 
 Hyman, D. M. R., Dietterich, H. R., and Patrick, M. R. (2022). Toward next-generation lava flow forecasting: Development of a fast, physics-based lava propagation model. Journal of Geophysical Research: Solid Earth, 127(10):e2022JB024998.
 
+Hyman, D.M.R., Dietterich, H.R., Gallant, E. et al. Real-time lava flow forecasting during the 2022 Mauna Loa eruption response. Bull Volcanol 87, 3 (2025). [https://doi.org/10.1007/s00445-024-01783-z](https://doi.org/10.1007/s00445-024-01783-z).
+
